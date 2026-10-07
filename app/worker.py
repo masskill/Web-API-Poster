@@ -244,7 +244,9 @@ class Worker:
             except Exception as e:
                 log(f"error: {type(e).__name__}: {e}")
                 d = await browser.save_debug(job_id, log.lines, page)
-                return PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception"), d
+                code = "network" if "net::ERR_" in str(e) else "exception"
+                return PublishResult("failed", error=f"{type(e).__name__}: {str(e).splitlines()[0]}",
+                                     error_code=code), d
             finally:
                 try:
                     await ctx.close()

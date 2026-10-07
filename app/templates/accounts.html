@@ -36,6 +36,6 @@
     <p class="muted small">{{ t("acc.browser_hint") }}<br>{{ t("acc.telegram_hint") }}</p>
     <button type="submit">{{ t("common.add") }}</button>
   </form>
-  <p class="muted small">{{ t("acc.later") }} {% for k in later %}{{ platform_name(k) }}{{ ", " if not loop.last }}{% endfor %}</p>
+  {% if later %}<p class="muted small">{{ t("acc.later") }} {% for k in later %}{{ platform_name(k) }}{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
 </section>
 {% endblock %}

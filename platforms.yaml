@@ -151,7 +151,7 @@ pinterest:
 rumble:
   name: Rumble
   method: browser
-  implemented: false
+  implemented: true
   has_title: true
   title_max: 100              # verify
   description_max: 5000       # verify
@@ -159,14 +159,14 @@ rumble:
   style: "Clear title, informative description."
   video:
     max_duration_sec: 43200   # verify
-    max_size_mb: 15360        # verify
+    max_size_mb: 6144         # Rumble support: files up to 6 GB
     formats: [mp4, mov, avi, mkv, wmv]
     aspect_ratios: ["16:9", "9:16"]
 
 dailymotion:
   name: Dailymotion
   method: browser
-  implemented: false
+  implemented: true
   has_title: true
   title_max: 255
   description_max: 3000       # verify
@@ -181,7 +181,7 @@ dailymotion:
 vimeo:
   name: Vimeo
   method: browser
-  implemented: false
+  implemented: true
   has_title: true
   title_max: 128              # verify
   description_max: 5000       # verify
@@ -196,7 +196,7 @@ vimeo:
 snapchat:
   name: Snapchat Spotlight
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 160        # verify
@@ -211,7 +211,7 @@ snapchat:
 likee:
   name: Likee
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 500        # verify
@@ -226,7 +226,7 @@ likee:
 vk:
   name: VK Видео
   method: browser
-  implemented: false
+  implemented: true
   has_title: true
   title_max: 128              # verify
   description_max: 5000       # verify
