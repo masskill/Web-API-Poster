@@ -1,4 +1,4 @@
-"""Database tables. All datetimes are stored as naive UTC."""
+"""Database tables. All datetimes are timezone-aware UTC."""
 import json
 from datetime import datetime, timezone
 
@@ -6,7 +6,7 @@ from sqlmodel import Field, SQLModel
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 class Account(SQLModel, table=True):
