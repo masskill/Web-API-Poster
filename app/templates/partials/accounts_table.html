@@ -1,0 +1,43 @@
+<div id="accounts-table" {% if polling %}hx-get="/accounts/table" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+{% if not accounts %}<p class="muted">{{ t("acc.none") }}</p>{% else %}
+<div class="table-wrap"><table>
+  <tr><th>{{ t("acc.platform") }}</th><th>{{ t("acc.name") }}</th><th>{{ t("acc.status") }}</th>
+      <th>{{ t("acc.keys") }}</th><th></th></tr>
+  {% for a in accounts %}
+  <tr>
+    <td>{{ platform_name(a.platform) }}</td>
+    <td>{{ a.name }}<div class="muted small">{{ a.slug }}</div></td>
+    <td>
+      {% if a.logged_in_at %}<span class="badge ok">{{ t("acc.logged_in", date=fmt_dt(a.logged_in_at)) }}</span>
+      {% else %}<span class="badge warn">{{ t("acc.not_logged_in") }}</span>{% endif %}
+      {% set ls = login_state.get(a.id) %}
+      {% if ls %}<div class="small">{{ t("acc.login_state." ~ ls) }}</div>{% endif %}
+      {% set cr = check_results.get(a.id) %}
+      {% if cr == "ok" %}<div class="small ok">{{ t("acc.check_ok") }}</div>
+      {% elif cr == "fail" %}<div class="small error">{{ t("acc.check_fail") }}</div>
+      {% elif cr %}<div class="small error">{{ t("acc.check_error", error=cr) }}</div>{% endif %}
+    </td>
+    <td class="small">
+      {% if a.platform == "telegram" %}
+        {{ t("acc.bot_token") }}: <code>{{ mask(a.cfg.get("bot_token")) }}</code><br>{{ a.cfg.get("chat_id") }}
+      {% else %}
+        {{ t("acc.session_file") }}:
+        {% if session_exists[a.id] %}<code>sessions/{{ a.platform }}/{{ a.slug }}.json</code>{% else %}—{% endif %}
+      {% endif %}
+    </td>
+    <td><div class="actions">
+      {% if a.platform != "telegram" %}
+        <button hx-post="/accounts/{{ a.id }}/login" hx-target="#accounts-table" hx-swap="outerHTML">{{ t("acc.login") }}</button>
+      {% endif %}
+      <button class="secondary" hx-post="/accounts/{{ a.id }}/check" hx-target="#accounts-table" hx-swap="outerHTML"
+              hx-disabled-elt="this">{{ t("acc.check") }}</button>
+      <button class="secondary" hx-post="/accounts/{{ a.id }}/rename" hx-prompt="{{ t('acc.rename_prompt') }}"
+              hx-target="#accounts-table" hx-swap="outerHTML">{{ t("acc.rename") }}</button>
+      <button class="danger" hx-post="/accounts/{{ a.id }}/delete" hx-confirm="{{ t('acc.delete_confirm') }}"
+              hx-target="#accounts-table" hx-swap="outerHTML">{{ t("common.delete") }}</button>
+    </div></td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+</div>

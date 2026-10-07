@@ -1,5 +1,6 @@
 """Sequential job queue: one job (account x video) at a time, plus login / login-check actions."""
 import asyncio
+import logging
 from datetime import timedelta
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from app.db import get_session
 from app.models import Account, Job, Post, utcnow
 from app.publishers.base import NeedsUserAction, PublishResult
 from app.texts import PlatformText
+
+logger = logging.getLogger("poster.worker")
 
 POLL_SECONDS = 30
 MAX_USER_ROUNDS = 3
@@ -155,7 +158,11 @@ class Worker:
                     pass
                 self._event.clear()
                 continue
-            await self.run_job(job_id)
+            try:
+                await self.run_job(job_id)
+            except Exception:
+                logger.exception("job %s crashed", job_id)
+                finish_job(job_id, PublishResult("failed", error_code="exception"), None)
             if next_due_job_id() is not None:
                 await browser.human_pause("job")
 

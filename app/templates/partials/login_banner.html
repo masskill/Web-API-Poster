@@ -1,0 +1,8 @@
+{% if need_login %}
+<div class="alert warn">
+  <b>{{ t("banner.need_login") }}</b>
+  {% for a in need_login %}{{ platform_name(a.platform) }} / {{ a.name }}{{ ", " if not loop.last }}{% endfor %}
+  <div class="small">{{ t("banner.need_login_hint") }}
+    {% if request.url.path != "/accounts" %}<a href="/accounts">{{ t("banner.go_accounts") }}</a>{% endif %}</div>
+</div>
+{% endif %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("set.title") }}</h1>
+{% if saved %}<div class="alert ok">{{ t("common.saved") }}</div>{% endif %}
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+
+<form method="post" action="/settings">
+  <section>
+    <h2>{{ t("set.ai") }}</h2>
+    <label>{{ t("set.ai_provider") }}</label>
+    <select name="ai_provider">
+      <option value="none" {{ "selected" if s.ai_provider == "none" }}>{{ t("set.ai_none") }}</option>
+      <option value="openai" {{ "selected" if s.ai_provider == "openai" }}>OpenAI</option>
+      <option value="anthropic" {{ "selected" if s.ai_provider == "anthropic" }}>Anthropic (Claude)</option>
+    </select>
+    {% for key, title in (("openai", "OpenAI"), ("anthropic", "Anthropic")) %}
+    <div class="row">
+      <div>
+        <label>{{ t("set.api_key", name=title) }}
+          {% if s[key ~ "_api_key"] %}<span class="muted small">({{ t("set.key_saved", mask=mask(s[key ~ "_api_key"])) }})</span>{% endif %}</label>
+        <input type="password" name="{{ key }}_api_key" placeholder="{{ t('set.key_keep') }}" autocomplete="off">
+        {% if s[key ~ "_api_key"] %}<label class="checks small"><input type="checkbox" name="clear_{{ key }}_api_key" value="1"> {{ t("set.key_clear") }}</label>{% endif %}
+      </div>
+      <div>
+        <label>{{ t("set.model", name=title) }}</label>
+        <input type="text" name="{{ key }}_model" value="{{ s[key ~ '_model'] }}">
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section>
+    <h2>{{ t("set.browser") }}</h2>
+    <label>{{ t("set.channel") }}</label>
+    <input type="text" name="browser_channel" value="{{ s.browser_channel }}">
+    <label class="checks"><input type="checkbox" name="headless" value="1" {{ "checked" if s.headless == "1" }}> {{ t("set.headless") }}</label>
+    <p class="muted small">{{ t("set.headless_hint") }}</p>
+    <label>{{ t("set.user_wait") }}</label>
+    <input type="number" name="user_wait_minutes" min="1" value="{{ s.user_wait_minutes }}">
+    <label>{{ t("set.action_pause") }}</label>
+    <div class="row">
+      <input type="number" step="0.1" min="0" name="action_pause_min" value="{{ s.action_pause_min }}" aria-label="{{ t('common.from') }}">
+      <input type="number" step="0.1" min="0" name="action_pause_max" value="{{ s.action_pause_max }}" aria-label="{{ t('common.to') }}">
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t("set.publishing") }}</h2>
+    <label class="checks"><input type="checkbox" name="dry_run" value="1" {{ "checked" if s.dry_run == "1" }}> {{ t("set.dry_run") }}</label>
+    <label>{{ t("set.timezone") }}</label>
+    <input type="text" name="timezone" value="{{ s.timezone }}">
+    <label>{{ t("set.daily_limit") }}</label>
+    <input type="number" name="daily_limit" min="0" value="{{ s.daily_limit }}">
+    <label>{{ t("set.job_pause") }}</label>
+    <div class="row">
+      <input type="number" min="0" name="job_pause_min" value="{{ s.job_pause_min }}" aria-label="{{ t('common.from') }}">
+      <input type="number" min="0" name="job_pause_max" value="{{ s.job_pause_max }}" aria-label="{{ t('common.to') }}">
+    </div>
+  </section>
+
+  <button type="submit">{{ t("common.save") }}</button>
+</form>
+
+<section style="margin-top:14px">
+  <h2>{{ t("set.categories") }}</h2>
+  {% for c in categories %}
+    <form method="post" action="/categories/{{ c.id }}/delete" class="actions" style="margin:4px 0">
+      <span style="flex:1">{{ c.name }}</span><button class="danger">{{ t("common.delete") }}</button>
+    </form>
+  {% endfor %}
+  <form method="post" action="/categories" class="row" style="margin-top:8px">
+    <input type="text" name="name" required>
+    <button type="submit" style="flex:0">{{ t("common.add") }}</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% set ns = namespace(active=false, needs=false) %}
+{% for item in items %}{% for job, acc in item.jobs %}
+  {% if job.status in ("pending", "running", "needs_action") %}{% set ns.active = true %}{% endif %}
+  {% if job.status == "needs_action" %}{% set ns.needs = true %}{% endif %}
+{% endfor %}{% endfor %}
+<div id="jobs-table" {% if ns.active %}hx-get="/posts/table" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+{% if ns.needs %}<div class="alert warn"><b>{{ t("posts.needs_action") }}</b></div>{% endif %}
+{% if not items %}<p class="muted">{{ t("posts.empty") }}</p>{% endif %}
+{% for item in items %}{% set p = item.post %}
+<section>
+  <h3>#{{ p.id }} {{ p.title or "—" }}
+    {% if p.dry_run %}<span class="badge">dry-run</span>{% endif %}
+    <span class="muted small">{{ p.category }} · {{ fmt_dt(p.created_at) }}
+      {% if p.scheduled_at %} · {{ t("posts.scheduled", dt=fmt_dt(p.scheduled_at)) }}{% endif %}</span>
+  </h3>
+  <div class="table-wrap"><table>
+    <tr><th>{{ t("posts.col_account") }}</th><th>{{ t("posts.col_status") }}</th><th>{{ t("posts.col_when") }}</th>
+        <th>{{ t("posts.col_result") }}</th><th></th></tr>
+    {% for job, acc in item.jobs %}
+    <tr>
+      <td>{% if acc %}{{ platform_name(acc.platform) }} / {{ acc.name }}{% else %}—{% endif %}</td>
+      <td><span class="badge {{ job.status }}">{{ t("status." ~ job.status) }}</span>
+        {% if job.error_code %}<div class="small {{ 'warn' if job.status in ('pending', 'needs_action') else 'error' }}">{{ t("err." ~ job.error_code) }}</div>{% endif %}
+        {% if job.error %}<div class="small error">{{ job.error }}</div>{% endif %}</td>
+      <td class="small">{{ fmt_dt(job.finished_at or job.started_at or job.run_at) }}</td>
+      <td class="small">
+        {% if job.result_url %}<a href="{{ job.result_url }}" target="_blank" rel="noopener">{{ t("posts.open") }}</a><br>{% endif %}
+        {% if job.debug_dir %}{{ t("posts.debug") }}: <code>{{ job.debug_dir }}</code><br>
+          <a href="/debug/{{ job.id }}/steps.log" target="_blank">steps.log</a>
+          <a href="/debug/{{ job.id }}/screenshot.png" target="_blank">screenshot.png</a>
+          <a href="/debug/{{ job.id }}/page.html" target="_blank">page.html</a>{% endif %}
+        {% if job.log %}<details><summary>{{ t("posts.log") }}</summary><pre>{{ job.log }}</pre></details>{% endif %}
+      </td>
+      <td><div class="actions">
+        {% if job.status in ("failed", "cancelled", "dry_run") %}
+          <button class="secondary" hx-post="/jobs/{{ job.id }}/retry" hx-target="#jobs-table" hx-swap="outerHTML">{{ t("posts.retry") }}</button>{% endif %}
+        {% if job.status in ("pending", "needs_action", "failed") %}
+          <button class="danger" hx-post="/jobs/{{ job.id }}/cancel" hx-target="#jobs-table" hx-swap="outerHTML">{{ t("posts.cancel") }}</button>{% endif %}
+      </div></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endfor %}
+</div>

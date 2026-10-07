@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("acc.title") }}</h1>
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+{% include "partials/login_banner.html" %}
+
+<section>
+  {% include "partials/accounts_table.html" %}
+</section>
+
+<section>
+  <h2>{{ t("acc.add") }}</h2>
+  <form method="post" action="/accounts">
+    <div class="row">
+      <div>
+        <label>{{ t("acc.platform") }}</label>
+        <select name="platform">
+          {% for k in implemented %}<option value="{{ k }}">{{ platform_name(k) }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>{{ t("acc.name") }}</label>
+        <input type="text" name="name" placeholder="{{ t('acc.name_hint') }}" required>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>{{ t("acc.bot_token") }} <span class="muted small">({{ t("acc.only_telegram") }})</span></label>
+        <input type="password" name="bot_token" autocomplete="off">
+      </div>
+      <div>
+        <label>{{ t("acc.chat_id") }} <span class="muted small">({{ t("acc.only_telegram") }})</span></label>
+        <input type="text" name="chat_id" placeholder="@my_channel">
+      </div>
+    </div>
+    <p class="muted small">{{ t("acc.browser_hint") }}<br>{{ t("acc.telegram_hint") }}</p>
+    <button type="submit">{{ t("common.add") }}</button>
+  </form>
+  <p class="muted small">{{ t("acc.later") }} {% for k in later %}{{ platform_name(k) }}{{ ", " if not loop.last }}{% endfor %}</p>
+</section>
+{% endblock %}

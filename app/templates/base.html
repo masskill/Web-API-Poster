@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ t("app.name") }}{% endblock %}</title>
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e3e6eb;
+          --accent:#2563eb; --ok:#15803d; --warn:#b45309; --err:#b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:10px 16px;
+           display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+  header .brand { font-weight:700; }
+  header nav { display:flex; gap:14px; flex-wrap:wrap; flex:1; }
+  header a { color:var(--text); text-decoration:none; }
+  header a.active { color:var(--accent); font-weight:600; }
+  .lang a { padding:2px 6px; border-radius:4px; }
+  .lang a.active { background:var(--accent); color:#fff; }
+  main { max-width:1000px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 16px; }
+  h2 { font-size:17px; margin:0 0 10px; }
+  h3 { font-size:15px; margin:0 0 8px; }
+  section, .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px; }
+  label { display:block; margin:8px 0 4px; font-weight:500; }
+  input[type=text], input[type=password], input[type=number], input[type=datetime-local], select, textarea {
+    width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
+  textarea { resize:vertical; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:180px; }
+  button, .btn { padding:6px 12px; border:1px solid var(--accent); background:var(--accent); color:#fff;
+                 border-radius:6px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button.danger { background:#fff; color:var(--err); border-color:var(--err); }
+  button:disabled { opacity:.5; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .table-wrap { overflow-x:auto; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+  .ok { color:var(--ok); }
+  .warn { color:var(--warn); }
+  .error { color:var(--err); }
+  .alert { padding:10px 12px; border-radius:6px; margin-bottom:14px; border:1px solid; }
+  .alert.error { background:#fef2f2; }
+  .alert.warn { background:#fffbeb; }
+  .alert.ok { background:#f0fdf4; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:13px; background:#eef0f3; }
+  .badge.ok, .badge.published, .badge.dry_run { background:#dcfce7; color:var(--ok); }
+  .badge.warn, .badge.needs_action, .badge.pending { background:#fef3c7; color:var(--warn); }
+  .badge.failed { background:#fee2e2; color:var(--err); }
+  .badge.running { background:#dbeafe; color:var(--accent); }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .checks label { display:inline-flex; gap:6px; align-items:center; font-weight:400; margin:4px 14px 4px 0; }
+  .htmx-indicator { display:none; }
+  .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display:inline; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#f3f4f6; padding:8px; border-radius:6px; font-size:12px; }
+  code { word-break:break-all; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">{{ t("app.name") }}</span>
+  <nav>
+    {% set path = request.url.path %}
+    <a href="/" class="{{ 'active' if path == '/' }}">{{ t("nav.new_post") }}</a>
+    <a href="/posts" class="{{ 'active' if path.startswith('/posts') }}">{{ t("nav.posts") }}</a>
+    <a href="/accounts" class="{{ 'active' if path.startswith('/accounts') }}">{{ t("nav.accounts") }}</a>
+    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">{{ t("nav.settings") }}</a>
+  </nav>
+  <span class="lang">
+    <a href="/lang/uk" class="{{ 'active' if lang == 'uk' }}">UK</a>
+    <a href="/lang/ru" class="{{ 'active' if lang == 'ru' }}">RU</a>
+  </span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

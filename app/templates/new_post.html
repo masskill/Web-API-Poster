@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("post.title") }}</h1>
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+{% include "partials/login_banner.html" %}
+
+<section>
+  <form id="upload-form" hx-post="/upload" hx-encoding="multipart/form-data" hx-trigger="change"
+        hx-target="#video-slot" hx-indicator="#upload-ind">
+    <label>{{ t("post.video") }}</label>
+    <input type="file" name="video" accept="video/*">
+    <span id="upload-ind" class="htmx-indicator muted">{{ t("post.uploading") }}</span>
+  </form>
+</section>
+
+<form id="post-form" method="post" action="/posts">
+  <div id="video-slot"></div>
+
+  <section>
+    <label>{{ t("post.f_title") }}</label>
+    <input type="text" name="title">
+    <label>{{ t("post.f_description") }}</label>
+    <textarea name="description" rows="5"></textarea>
+    <div class="row">
+      <div>
+        <label>{{ t("post.f_hashtags") }}</label>
+        <input type="text" name="hashtags" placeholder="#recipe #food">
+      </div>
+      <div>
+        <label>{{ t("post.f_category") }}</label>
+        <select name="category">
+          {% for c in categories %}<option>{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t("post.accounts") }}</h2>
+    {% if not accounts %}
+      <p class="muted">{{ t("post.no_accounts") }} <a href="/accounts">{{ t("nav.accounts") }}</a></p>
+    {% endif %}
+    <div class="checks" hx-post="/check-video" hx-trigger="change, videoUploaded from:body" hx-target="#video-check">
+      {% for platform, group in accounts|groupby("platform") %}
+        <div><b>{{ platform_name(platform) }}:</b>
+          {% for a in group %}
+            <label><input type="checkbox" class="acc-cb" name="account_ids" value="{{ a.id }}"> {{ a.name }}
+              {% if not a.logged_in_at %}<span class="badge warn">{{ t("acc.not_logged_in") }}</span>{% endif %}</label>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t("post.checks") }}</h2>
+    <div id="video-check"><p class="muted">{{ t("post.select_first") }}</p></div>
+  </section>
+
+  <section>
+    <h2>{{ t("post.texts") }}</h2>
+    <button type="button" class="secondary" hx-post="/texts" hx-vals='{"mode": "ai"}' hx-target="#texts"
+            hx-indicator="#adapt-ind" hx-disabled-elt="this">{{ t("post.adapt") }}</button>
+    <span id="adapt-ind" class="htmx-indicator muted">…</span>
+    <div id="texts" hx-post="/texts" hx-trigger="change from:.acc-cb" hx-vals='{"mode": "keep"}'>
+      <p class="muted">{{ t("post.texts_hint") }}</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t("post.when") }}</h2>
+    <label class="checks"><input type="radio" name="when" value="now" checked> {{ t("post.now") }}</label>
+    <div class="row">
+      <label class="checks"><input type="radio" name="when" value="at"> {{ t("post.at") }}</label>
+      <input type="datetime-local" name="scheduled_at">
+    </div>
+    <p class="muted small">{{ t("post.tz_note", tz=timezone) }}</p>
+    <label class="checks"><input type="checkbox" name="dry_run" value="1" {{ "checked" if dry_run }}> {{ t("post.dry_run") }}</label>
+  </section>
+
+  <button type="submit">{{ t("post.submit") }}</button>
+</form>
+{% endblock %}
