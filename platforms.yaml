@@ -91,7 +91,7 @@ facebook:
 x:
   name: X (Twitter)
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 280        # without Premium
@@ -106,7 +106,7 @@ x:
 threads:
   name: Threads
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 500
@@ -121,7 +121,7 @@ threads:
 bluesky:
   name: Bluesky
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 300
@@ -136,7 +136,7 @@ bluesky:
 pinterest:
   name: Pinterest
   method: browser
-  implemented: false
+  implemented: true
   has_title: true
   title_max: 100
   description_max: 500        # verify: 500 or 800

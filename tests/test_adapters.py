@@ -67,11 +67,11 @@ def test_login_detection_by_cookie(key):
     pub = make(BROWSER_ADAPTERS[key])
     home = pub.check_url
     cookie = sorted(pub.login_cookies)[0]
-    assert asyncio.run(pub.is_logged_in(FakePage(home, [(cookie, "x")])))
+    assert asyncio.run(pub.is_logged_in(FakePage(home, [(cookie, "1")])))
     assert not asyncio.run(pub.is_logged_in(FakePage(home, [("other", "x")])))
     login_page = pub.login_url if pub._on_login_page(pub.login_url) else None
     if login_page:
-        assert not asyncio.run(pub.is_logged_in(FakePage(login_page, [(cookie, "x")])))
+        assert not asyncio.run(pub.is_logged_in(FakePage(login_page, [(cookie, "1")])))
 
 
 @pytest.mark.parametrize("key", sorted(BROWSER_ADAPTERS))
