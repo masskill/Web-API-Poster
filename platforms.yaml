@@ -1,0 +1,239 @@
+# Platform rules: text limits (characters), hashtag count, video limits.
+# Edit freely when a platform changes its rules; no code changes needed.
+#
+#   implemented      - adapter exists in app/publishers/
+#   has_title        - platform has a separate title field; if false, title goes into the text
+#   title_max        - title length limit
+#   description_max  - limit of the main text field (hashtags are appended to it and count too)
+#   hashtags_max     - recommended / allowed number of hashtags
+#   style            - hint for AI text adaptation
+#   video.max_duration_sec, video.max_size_mb, video.formats (file extensions),
+#   video.aspect_ratios (recommended, "w:h")
+#
+# Values checked against public docs in Oct 2026; "# verify" marks values where sources disagree.
+
+youtube:
+  name: YouTube
+  method: browser
+  implemented: true
+  has_title: true
+  title_max: 100
+  description_max: 5000
+  hashtags_max: 15            # more than 15 hashtags -> YouTube ignores all of them
+  style: "SEO-friendly title with keywords first; detailed description, first 2 lines matter most; 3-5 relevant hashtags."
+  video:
+    max_duration_sec: 43200   # 12 h for verified accounts; 15 min for unverified
+    max_size_mb: 262144       # 256 GB
+    formats: [mp4, mov, avi, wmv, flv, webm, mkv, 3gp, mpeg, mpg]
+    aspect_ratios: ["16:9", "9:16", "1:1"]   # vertical/square up to 180 s becomes a Short
+  notes: "Shorts: vertical or square video up to 3 minutes."
+
+telegram:
+  name: Telegram
+  method: api
+  implemented: true
+  has_title: false
+  title_max: 0
+  description_max: 1024       # video caption limit
+  hashtags_max: 5
+  style: "Short friendly channel post; first line is a bold-ish hook; emojis allowed; few hashtags at the end."
+  video:
+    max_duration_sec: 86400
+    max_size_mb: 50           # Bot API upload limit (2000 MB only with a local Bot API server)
+    formats: [mp4, mov, mkv, webm]
+    aspect_ratios: ["16:9", "9:16", "1:1", "4:5"]
+
+tiktok:
+  name: TikTok
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 4000       # verify: 4000 in app/web, 2200 via API
+  hashtags_max: 5
+  style: "Catchy hook in the first line, casual tone, trending-style hashtags."
+  video:
+    max_duration_sec: 3600    # verify: 60 min on web upload for most accounts
+    max_size_mb: 4096         # verify: sources say 500 MB - 4 GB for web
+    formats: [mp4, mov, webm]
+    aspect_ratios: ["9:16"]
+
+instagram:
+  name: Instagram Reels
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 2200
+  hashtags_max: 5             # Instagram cut the limit from 30 to 5 (Dec 2025 rollout)
+  style: "Engaging caption, first 125 characters are visible before 'more'; emojis welcome."
+  video:
+    max_duration_sec: 180     # verify: up to 20 min is being tested
+    max_size_mb: 4096         # verify
+    formats: [mp4, mov]
+    aspect_ratios: ["9:16"]
+
+facebook:
+  name: Facebook
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 255              # verify
+  description_max: 63206
+  hashtags_max: 3
+  style: "Conversational post, short paragraphs, 1-3 hashtags."
+  video:
+    max_duration_sec: 14400   # 240 min for feed videos; Reels are shorter (verify: 90 s)
+    max_size_mb: 10240
+    formats: [mp4, mov]
+    aspect_ratios: ["16:9", "9:16", "1:1", "4:5"]
+
+x:
+  name: X (Twitter)
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 280        # without Premium
+  hashtags_max: 2
+  style: "Very short and punchy; 1-2 hashtags."
+  video:
+    max_duration_sec: 140     # without Premium
+    max_size_mb: 512
+    formats: [mp4, mov]
+    aspect_ratios: ["16:9", "1:1", "9:16"]
+
+threads:
+  name: Threads
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 500
+  hashtags_max: 1             # Threads supports one topic tag per post
+  style: "Conversational, like talking to friends; one topic tag."
+  video:
+    max_duration_sec: 300
+    max_size_mb: 1024         # verify
+    formats: [mp4, mov]
+    aspect_ratios: ["9:16", "1:1", "4:5", "16:9"]
+
+bluesky:
+  name: Bluesky
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 300
+  hashtags_max: 2
+  style: "Short, informal; hashtags are optional."
+  video:
+    max_duration_sec: 600     # raised from 3 to 10 minutes in 2026
+    max_size_mb: 300
+    formats: [mp4, mov, webm, mpeg]
+    aspect_ratios: ["16:9", "9:16", "1:1"]
+
+pinterest:
+  name: Pinterest
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 100
+  description_max: 500        # verify: 500 or 800
+  hashtags_max: 5
+  style: "Descriptive, keyword-rich title and description for search."
+  video:
+    max_duration_sec: 900
+    max_size_mb: 2048
+    formats: [mp4, mov, m4v]
+    aspect_ratios: ["9:16", "2:3", "1:1"]
+
+rumble:
+  name: Rumble
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 100              # verify
+  description_max: 5000       # verify
+  hashtags_max: 10            # verify
+  style: "Clear title, informative description."
+  video:
+    max_duration_sec: 43200   # verify
+    max_size_mb: 15360        # verify
+    formats: [mp4, mov, avi, mkv, wmv]
+    aspect_ratios: ["16:9", "9:16"]
+
+dailymotion:
+  name: Dailymotion
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 255
+  description_max: 3000       # verify
+  hashtags_max: 10            # verify
+  style: "Clear title, informative description, tags."
+  video:
+    max_duration_sec: 14400   # verify: 4 h
+    max_size_mb: 4096
+    formats: [mp4, mov, avi, mkv]
+    aspect_ratios: ["16:9", "9:16"]
+
+vimeo:
+  name: Vimeo
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 128              # verify
+  description_max: 5000       # verify
+  hashtags_max: 10            # verify
+  style: "Professional, concise description."
+  video:
+    max_duration_sec: 43200   # verify: depends on plan
+    max_size_mb: 512          # verify: depends on plan
+    formats: [mp4, mov, avi, mkv]
+    aspect_ratios: ["16:9", "9:16", "1:1"]
+
+snapchat:
+  name: Snapchat Spotlight
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 160        # verify
+  hashtags_max: 3             # verify
+  style: "Very short, fun caption with a topic hashtag."
+  video:
+    max_duration_sec: 60      # verify
+    max_size_mb: 1024         # verify
+    formats: [mp4, mov]
+    aspect_ratios: ["9:16"]
+
+likee:
+  name: Likee
+  method: browser
+  implemented: false
+  has_title: false
+  title_max: 0
+  description_max: 500        # verify
+  hashtags_max: 5             # verify
+  style: "Short, casual caption with hashtags."
+  video:
+    max_duration_sec: 600     # verify
+    max_size_mb: 1024         # verify
+    formats: [mp4, mov]
+    aspect_ratios: ["9:16"]
+
+vk:
+  name: VK Видео
+  method: browser
+  implemented: false
+  has_title: true
+  title_max: 128              # verify
+  description_max: 5000       # verify
+  hashtags_max: 10            # verify
+  style: "Clear title, informative description."
+  video:
+    max_duration_sec: 43200   # verify
+    max_size_mb: 262144       # verify
+    formats: [mp4, mov, avi, mkv, webm]
+    aspect_ratios: ["16:9", "9:16"]

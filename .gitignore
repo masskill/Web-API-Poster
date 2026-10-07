@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Web-API-Poster: local data (browser profiles, session keys, media, DB, debug)
+data/
+*.db
