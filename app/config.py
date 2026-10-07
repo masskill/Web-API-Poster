@@ -40,6 +40,15 @@ def scrub(text: str, secrets: list[str | None]) -> str:
     return text
 
 
+# Profile folders get ASCII names: safer for browser profiles on any OS.
+TRANSLIT = dict(zip(
+    "абвгґдеєжзиіїйклмнопрстуфхцчшщьюяыэё",
+    ["a", "b", "v", "h", "g", "d", "e", "ie", "zh", "z", "y", "i", "i", "i", "k", "l", "m", "n", "o", "p",
+     "r", "s", "t", "u", "f", "kh", "ts", "ch", "sh", "shch", "", "iu", "ia", "y", "e", "e"],
+))
+
+
 def slugify(name: str) -> str:
-    slug = re.sub(r"[^\w-]+", "-", name.strip().lower(), flags=re.UNICODE).strip("-_")
+    text = "".join(TRANSLIT.get(c, c) for c in name.strip().lower())
+    slug = re.sub(r"[^a-z0-9_-]+", "-", text).strip("-_")
     return slug or "account"

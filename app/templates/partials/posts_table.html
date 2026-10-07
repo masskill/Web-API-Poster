@@ -26,9 +26,7 @@
       <td class="small">
         {% if job.result_url %}<a href="{{ job.result_url }}" target="_blank" rel="noopener">{{ t("posts.open") }}</a><br>{% endif %}
         {% if job.debug_dir %}{{ t("posts.debug") }}: <code>{{ job.debug_dir }}</code><br>
-          <a href="/debug/{{ job.id }}/steps.log" target="_blank">steps.log</a>
-          <a href="/debug/{{ job.id }}/screenshot.png" target="_blank">screenshot.png</a>
-          <a href="/debug/{{ job.id }}/page.html" target="_blank">page.html</a>{% endif %}
+          {% for f in debug_files(job.debug_dir) %}<a href="/debug/{{ job.id }}/{{ f }}" target="_blank">{{ f }}</a> {% endfor %}{% endif %}
         {% if job.log %}<details><summary>{{ t("posts.log") }}</summary><pre>{{ job.log }}</pre></details>{% endif %}
       </td>
       <td><div class="actions">

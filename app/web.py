@@ -46,7 +46,7 @@ def fmt_dt(dt: datetime | None) -> str:
     return dt.astimezone(local_tz()).strftime("%d.%m.%Y %H:%M") if dt else ""
 
 
-def render(request: Request, name: str, status_code: int = 200, **ctx) -> HTMLResponse:
+def render(request: Request, template: str, status_code: int = 200, **ctx) -> HTMLResponse:
     lang = get_lang(request)
     ctx.update(
         lang=lang,
@@ -54,8 +54,9 @@ def render(request: Request, name: str, status_code: int = 200, **ctx) -> HTMLRe
         platforms=load_platforms(),
         platform_name=platform_name,
         fmt_dt=fmt_dt,
+        debug_files=lambda d: [n for n in sorted(DEBUG_FILES) if (Path(d) / n).exists()],
     )
-    return templates.TemplateResponse(request, name, ctx, status_code=status_code)
+    return templates.TemplateResponse(request, template, ctx, status_code=status_code)
 
 
 def implemented_platforms() -> list[str]:

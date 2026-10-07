@@ -75,3 +75,9 @@ def test_secret_is_masked_in_settings(client):
     client.post("/settings", data={"timezone": "Europe/Kyiv", "openai_api_key": "sk-verysecretkey123"})
     page = client.get("/settings").text
     assert "sk-verysecretkey123" not in page and "sk-v…y123" in page
+
+
+def test_slugify_is_ascii():
+    assert config.slugify("Рецепти") == "retsepty"
+    assert config.slugify("Новости Ёж") == "novosty-ezh"
+    assert config.slugify("🎵") == "account"
