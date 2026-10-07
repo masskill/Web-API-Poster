@@ -7,10 +7,7 @@ When YouTube changes its UI, fix the values below (send debug files from data/de
 """
 from pathlib import Path
 
-from playwright.async_api import TimeoutError as PlaywrightTimeout
-
-from app.browser import human_pause
-from app.publishers.base import NeedsUserAction, PublishResult
+from app.publishers.base import BrowserPublisher, PublishResult
 from app.texts import PlatformText
 
 URLS = {
@@ -30,136 +27,62 @@ SELECTORS = {
     "video_link": ".video-url-fadeable a, ytcp-video-info a",  # verify
     "progress": "ytcp-video-upload-progress",  # its text shows "...45%..." while uploading; verify
     "published_close": "ytcp-video-share-dialog #close-button",  # verify
-    "captcha": "iframe[src*='recaptcha'], form#captcha-form",
 }
 
-# Cookies that exist only for a logged-in YouTube session.
-LOGIN_COOKIES = {"SAPISID", "__Secure-3PAPISID", "LOGIN_INFO"}
-
-STEP_TIMEOUT = 60_000  # ms, waiting for an element
-UPLOAD_MIN_WAIT = 10 * 60  # s; grows with file size
 FORBIDDEN_CHARS = str.maketrans("", "", "<>")  # YouTube rejects < and > in title/description
 
 
-class YouTubePublisher:
+class YouTubePublisher(BrowserPublisher):
     platform = "youtube"
-    uses_browser = True
     login_url = URLS["login"]
     check_url = URLS["check"]
-
-    def __init__(self, account, log):
-        self.account = account
-        self.log = log
-        self.step = ""
-
-    async def is_logged_in(self, page) -> bool:
-        if "accounts.google.com" in page.url:
-            return False
-        cookies = await page.context.cookies(["https://www.youtube.com", "https://studio.youtube.com"])
-        return any(c["name"] in LOGIN_COOKIES for c in cookies)
-
-    async def _check_blockers(self, page) -> None:
-        """Raise NeedsUserAction for login / 2FA / captcha pages."""
-        if "accounts.google.com" in page.url:
-            raise NeedsUserAction("2fa" if "/challenge" in page.url else "login")
-        if await page.locator(SELECTORS["captcha"]).count():
-            async def captcha_gone() -> bool:
-                return await page.locator(SELECTORS["captcha"]).count() == 0
-            raise NeedsUserAction("captcha", check=captcha_gone)
-
-    def _go(self, step: str) -> None:
-        self.step = step
-        self.log(step)
-
-    async def _fill(self, box, value: str) -> None:
-        await box.click()
-        await box.fill(value.translate(FORBIDDEN_CHARS))
-
-    async def publish(self, page, video: Path, text: PlatformText, dry_run: bool) -> PublishResult:
-        try:
-            return await self._publish(page, video, text, dry_run)
-        except PlaywrightTimeout as e:
-            await self._check_blockers(page)  # a login page may have appeared mid-way
-            return PublishResult("failed", error_code="selector",
-                                 error=f"step '{self.step}': {str(e).splitlines()[0]}")
+    cookie_urls = ("https://www.youtube.com", "https://studio.youtube.com")
+    login_cookies = frozenset({"SAPISID", "__Secure-3PAPISID", "LOGIN_INFO"})
+    login_markers = ("accounts.google.com",)
+    challenge_markers = ("/challenge",)
 
     async def _publish(self, page, video: Path, text: PlatformText, dry_run: bool) -> PublishResult:
-        self._go("open upload page")
-        await page.goto(URLS["upload"], wait_until="domcontentloaded")
-        await page.wait_for_timeout(2000)
-        await self._check_blockers(page)
+        await self.open(page, URLS["upload"])
+        await self.upload_file(page, video, SELECTORS["file_input"])
 
-        self._go("select video file")
-        await page.locator(SELECTORS["file_input"]).first.wait_for(state="attached", timeout=STEP_TIMEOUT)
-        await human_pause()
-        await page.locator(SELECTORS["file_input"]).first.set_input_files(str(video))
+        self.go("fill title")
+        await self.fill(page, SELECTORS["title"], text.title.translate(FORBIDDEN_CHARS))
+        self.go("fill description")
+        await self.fill(page, SELECTORS["description"], text.caption().translate(FORBIDDEN_CHARS))
 
-        self._go("fill title")
-        title_box = page.locator(SELECTORS["title"])
-        await title_box.wait_for(state="visible", timeout=STEP_TIMEOUT)
-        await human_pause()
-        await self._fill(title_box, text.title)
-
-        self._go("fill description")
-        await human_pause()
-        await self._fill(page.locator(SELECTORS["description"]), text.caption())
-
-        self._go("audience: not made for kids")
-        await human_pause()
-        await page.locator(SELECTORS["not_for_kids"]).click()
-
+        self.go("audience: not made for kids")
+        await self.click(page, SELECTORS["not_for_kids"])
         for i in range(3):  # Details -> Video elements -> Checks -> Visibility
-            self._go(f"next ({i + 1}/3)")
-            await human_pause()
-            await page.locator(SELECTORS["next"]).click()
+            self.go(f"next ({i + 1}/3)")
+            await self.click(page, SELECTORS["next"])
+        self.go("visibility: public")
+        await self.click(page, SELECTORS["public"])
 
-        self._go("visibility: public")
-        await human_pause()
-        await page.locator(SELECTORS["public"]).click()
-
-        url = await self._video_url(page)
+        url = await self.href(page, SELECTORS["video_link"], timeout=30_000)
         self.log(f"video url: {url or 'not found'}")
         if dry_run:
-            self.log("dry-run: stopped before the final Publish button "
-                     "(YouTube keeps an unpublished draft; delete it in Studio if needed)")
-            return PublishResult("dry_run", url=url)
+            self.log("YouTube keeps an unpublished draft; delete it in Studio if needed")
+            return self.dry_run_result(url)
 
-        self._go("wait until upload finishes")
+        self.go("wait until upload finishes")
         if not await self._wait_upload(page, video):
             return PublishResult("failed", error_code="upload", error="upload did not finish in time", url=url)
-
-        self._go("click Publish")
-        await human_pause()
-        await page.locator(SELECTORS["done"]).click()
-        try:
-            close = page.locator(SELECTORS["published_close"])
-            await close.wait_for(state="visible", timeout=STEP_TIMEOUT)
-            await close.click()
-            self.log("publish confirmed")
-        except PlaywrightTimeout:
-            self.log("publish confirmation dialog not detected; check the video in Studio")
+        self.go("click Publish")
+        await self.click(page, SELECTORS["done"])
+        if await self.confirm(page, SELECTORS["published_close"], self.step_timeout):
+            await self.click(page, SELECTORS["published_close"])
         return PublishResult("published", url=url)
-
-    async def _video_url(self, page) -> str | None:
-        link = page.locator(SELECTORS["video_link"]).first
-        try:
-            await link.wait_for(state="attached", timeout=30_000)
-            return await link.get_attribute("href")
-        except PlaywrightTimeout:
-            return None
 
     async def _wait_upload(self, page, video: Path) -> bool:
         """While uploading, the progress label contains a percentage (in any UI language)."""
-        size_mb = video.stat().st_size / 1024 / 1024
-        deadline_s = UPLOAD_MIN_WAIT + size_mb * 2
-        waited = 0
-        while waited < deadline_s:
+        waited, limit = 0, self.upload_timeout(video)
+        while waited < limit:
             label = page.locator(SELECTORS["progress"]).first
             text = (await label.inner_text()) if await label.count() else ""
             if "%" not in text:
                 return True
-            if waited % 60 == 0:
+            if waited % 60_000 == 0:
                 self.log(f"uploading: {' '.join(text.split())[:80]}")
             await page.wait_for_timeout(5000)
-            waited += 5
+            waited += 5000
         return False

@@ -46,7 +46,7 @@ telegram:
 tiktok:
   name: TikTok
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 4000       # verify: 4000 in app/web, 2200 via API
@@ -61,7 +61,7 @@ tiktok:
 instagram:
   name: Instagram Reels
   method: browser
-  implemented: false
+  implemented: true
   has_title: false
   title_max: 0
   description_max: 2200
@@ -74,19 +74,19 @@ instagram:
     aspect_ratios: ["9:16"]
 
 facebook:
-  name: Facebook
+  name: Facebook Reels
   method: browser
-  implemented: false
-  has_title: true
-  title_max: 255              # verify
+  implemented: true
+  has_title: false            # Reels have no title field
+  title_max: 0
   description_max: 63206
   hashtags_max: 3
   style: "Conversational post, short paragraphs, 1-3 hashtags."
   video:
-    max_duration_sec: 14400   # 240 min for feed videos; Reels are shorter (verify: 90 s)
+    max_duration_sec: 90      # verify: Reels limit; feed videos allow up to 240 min
     max_size_mb: 10240
     formats: [mp4, mov]
-    aspect_ratios: ["16:9", "9:16", "1:1", "4:5"]
+    aspect_ratios: ["9:16"]
 
 x:
   name: X (Twitter)
