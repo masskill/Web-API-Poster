@@ -1,12 +1,13 @@
 """Sequential job queue: one job (account x video) at a time, plus login / login-check actions."""
 import asyncio
 import logging
-from datetime import timedelta
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import func, select
 
-from app import browser, settings_store
+from app import browser, config, settings_store
 from app.db import get_session
 from app.models import Account, Job, Post, utcnow
 from app.publishers.base import NeedsUserAction, PublishResult
@@ -83,11 +84,58 @@ def retry_job(job_id: int) -> bool:
     return True
 
 
-def cancel_job(job_id: int) -> bool:
-    """Pending and waiting-for-user jobs can be cancelled; a running upload finishes its step."""
+def publish_for_real(job_id: int) -> bool:
+    """After a successful dry-run: run the same job again, this time pressing the final button."""
     with get_session() as s:
         job = s.get(Job, job_id)
-        if not job or job.status not in ("pending", "needs_action", "failed"):
+        if not job or job.status != "dry_run":
+            return False
+        job.dry_run, job.status, job.run_at = False, "pending", utcnow()
+        job.error = job.error_code = job.debug_dir = job.result_url = None
+        s.add(job)
+        s.commit()
+    return True
+
+
+def update_job(job_id: int, text: PlatformText, run_at: datetime) -> bool:
+    """Edit text and time of a job that has not been published yet (it is queued again)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status not in ("pending", "failed", "cancelled"):
+            return False
+        job.text_json, job.run_at, job.status = text.to_json(), run_at, "pending"
+        job.error = job.error_code = None
+        s.add(job)
+        s.commit()
+    return True
+
+
+def delete_post(post_id: int) -> bool:
+    """Delete a publication with its jobs, debug files and video (if no other publication uses it)."""
+    with get_session() as s:
+        post = s.get(Post, post_id)
+        if not post:
+            return False
+        jobs = s.exec(select(Job).where(Job.post_id == post_id)).all()
+        if any(j.status in ("running", "needs_action") for j in jobs):
+            return False
+        for job in jobs:
+            shutil.rmtree(config.DEBUG_DIR / str(job.id), ignore_errors=True)
+            s.delete(job)
+        video = Path(post.video_path)
+        s.delete(post)
+        s.commit()
+        still_used = s.exec(select(Post).where(Post.video_path == str(video))).first()
+    if not still_used and video.parent == config.MEDIA_DIR:
+        video.unlink(missing_ok=True)
+    return True
+
+
+def cancel_job(job_id: int) -> bool:
+    """Cancel a job; a running one is stopped by the worker (see Worker.abort)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status not in ("pending", "needs_action", "failed", "running"):
             return False
         job.status, job.finished_at = "cancelled", utcnow()
         s.add(job)
@@ -127,7 +175,8 @@ def finish_job(job_id: int, result: PublishResult, debug_dir: str | None) -> Non
         job = s.get(Job, job_id)
         if job is None:  # deleted while it was running
             return
-        if job.status != "cancelled":  # user cancelled while we waited: keep it
+        # A job cancelled while it ran stays cancelled, unless the post really went out.
+        if job.status != "cancelled" or result.status == "published":
             job.status = result.status
         job.result_url = result.url
         job.error_code, job.error = result.error_code, result.error
@@ -142,6 +191,13 @@ class Worker:
         self.publishers = publishers
         self.loop: asyncio.AbstractEventLoop | None = None
         self._event: asyncio.Event | None = None
+        self.current_job_id: int | None = None
+        self._ctx = None  # browser context of the running job
+
+    def abort(self, job_id: int) -> None:
+        """Thread-safe: stop the running job by closing its browser."""
+        if self.loop and self._ctx is not None and self.current_job_id == job_id:
+            asyncio.run_coroutine_threadsafe(self._ctx.close(), self.loop)
 
     def wake(self) -> None:
         """Thread-safe: called by the scheduler and the web UI."""
@@ -168,10 +224,13 @@ class Worker:
             self._event.clear()
             return
         try:
+            self.current_job_id = job_id
             await self.run_job(job_id)
         except Exception as e:
             logger.exception("job %s crashed", job_id)
             finish_job(job_id, PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception"), None)
+        finally:
+            self.current_job_id = None
         if next_due_job_id() is not None:
             await browser.human_pause("job")
 
@@ -221,7 +280,7 @@ class Worker:
 
         headless = settings_store.get_bool("headless")
         async with browser.BROWSER_LOCK, async_playwright() as pw:
-            ctx = await browser.open_context(pw, account, headless, log)
+            ctx = self._ctx = await browser.open_context(pw, account, headless, log)
             page = await browser.first_page(ctx)
             try:
                 for _ in range(MAX_USER_ROUNDS):
@@ -260,6 +319,7 @@ class Worker:
                 code = "network" if "net::ERR_" in str(e) else "exception"
                 return PublishResult("failed", error=error, error_code=code), d
             finally:
+                self._ctx = None
                 try:
                     await ctx.close()
                 except Exception:

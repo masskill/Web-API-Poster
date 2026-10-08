@@ -6,7 +6,8 @@
   {% for a in accounts %}
   <tr>
     <td>{{ platform_name(a.platform) }}</td>
-    <td>{{ a.name }}<div class="muted small">{{ a.slug }}</div></td>
+    <td>{{ a.name }}<div class="muted small">{{ a.slug }}</div>
+      {% if a.signature %}<div class="muted small">✍ {{ a.signature|truncate(40) }}</div>{% endif %}</td>
     <td>
       {% if a.logged_in_at %}<span class="badge ok">{{ t("acc.logged_in", date=fmt_dt(a.logged_in_at)) }}</span>
       {% else %}<span class="badge warn">{{ t("acc.not_logged_in") }}</span>{% endif %}
@@ -31,8 +32,8 @@
       {% endif %}
       <button class="secondary" hx-post="/accounts/{{ a.id }}/check" hx-target="#accounts-table" hx-swap="outerHTML"
               hx-disabled-elt="this">{{ t("acc.check") }}</button>
-      <button class="secondary" hx-post="/accounts/{{ a.id }}/rename" hx-prompt="{{ t('acc.rename_prompt') }}"
-              hx-target="#accounts-table" hx-swap="outerHTML">{{ t("acc.rename") }}</button>
+      <button class="secondary" hx-post="/accounts/{{ a.id }}/test" title="{{ t('acc.test_hint') }}">{{ t("acc.test") }}</button>
+      <a class="btn secondary" href="/accounts/{{ a.id }}/edit">{{ t("acc.edit") }}</a>
       <button class="danger" hx-post="/accounts/{{ a.id }}/delete" hx-confirm="{{ t('acc.delete_confirm') }}"
               hx-target="#accounts-table" hx-swap="outerHTML">{{ t("common.delete") }}</button>
     </div></td>

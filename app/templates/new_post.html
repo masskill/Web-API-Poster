@@ -37,6 +37,15 @@
 
   <section>
     <h2>{{ t("post.accounts") }}</h2>
+    <input type="hidden" name="group_id" id="group_id" value="">
+    {% if groups %}
+      <div class="actions" style="margin-bottom:8px">
+        <span class="muted">{{ t("post.groups") }}</span>
+        {% for g in groups %}
+          <button type="button" class="secondary group-btn" data-group="{{ g.id }}" data-accounts="{{ g.account_ids }}">{{ g.name }}</button>
+        {% endfor %}
+      </div>
+    {% endif %}
     {% if not accounts %}
       <p class="muted">{{ t("post.no_accounts") }} <a href="/accounts">{{ t("nav.accounts") }}</a></p>
     {% endif %}
@@ -80,4 +89,14 @@
 
   <button type="submit">{{ t("post.submit") }}</button>
 </form>
+<script>
+// A group button selects exactly the accounts of that group.
+document.querySelectorAll(".group-btn").forEach(btn => btn.addEventListener("click", () => {
+  const ids = JSON.parse(btn.dataset.accounts).map(String);
+  const boxes = [...document.querySelectorAll(".acc-cb")];
+  boxes.forEach(cb => { cb.checked = ids.includes(cb.value); });
+  document.getElementById("group_id").value = btn.dataset.group;
+  if (boxes.length) boxes[0].dispatchEvent(new Event("change", {bubbles: true}));
+}));
+</script>
 {% endblock %}

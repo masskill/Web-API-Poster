@@ -9,6 +9,39 @@
 </section>
 
 <section>
+  <h2>{{ t("grp.title") }}</h2>
+  <p class="muted small">{{ t("grp.hint") }}</p>
+  {% for g in groups %}
+    <div class="card">
+      <div class="actions" style="justify-content:space-between">
+        <b>{{ g.name }}</b>
+        <span class="actions">
+          <button class="secondary" hx-post="/groups/{{ g.id }}/slots" hx-prompt="{{ t('grp.slots_prompt') }}">{{ t("grp.set_slots") }}</button>
+          <button class="danger" hx-post="/groups/{{ g.id }}/delete" hx-confirm="{{ t('grp.delete_confirm') }}">{{ t("common.delete") }}</button>
+        </span>
+      </div>
+      <div class="small">{% for a in accounts if a.id in g.ids %}{{ platform_name(a.platform) }} / {{ a.name }}{{ ", " if not loop.last }}{% endfor %}</div>
+      <div class="small muted">{{ t("grp.slots") }}: {{ g.slot_times|join(", ") if g.slot_times else t("grp.no_slots") }}</div>
+    </div>
+  {% else %}
+    <p class="muted">{{ t("grp.none") }}</p>
+  {% endfor %}
+  {% if accounts %}
+  <form method="post" action="/groups">
+    <div class="row">
+      <div><label>{{ t("grp.name") }}</label><input type="text" name="name" required placeholder="{{ t('acc.name_hint') }}"></div>
+      <div><label>{{ t("grp.slots") }}</label><input type="text" name="slots" placeholder="10:00, 18:00"></div>
+    </div>
+    <label>{{ t("grp.accounts") }}</label>
+    <div class="checks">
+      {% for a in accounts %}<label><input type="checkbox" name="account_ids" value="{{ a.id }}"> {{ platform_name(a.platform) }} / {{ a.name }}</label>{% endfor %}
+    </div>
+    <button type="submit">{{ t("grp.add") }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<section>
   <h2>{{ t("acc.add") }}</h2>
   <form method="post" action="/accounts">
     <div class="row">

@@ -20,12 +20,13 @@ def local_tz() -> ZoneInfo:
 
 
 def with_signature(text: PlatformText, account: Account, rules: dict) -> PlatformText:
-    """Append the account signature and cut again to the platform limits."""
-    if not account.signature.strip():
+    """Append the account signature; the main text is cut first so the signature always fits."""
+    signature = account.signature.strip()
+    if not signature:
         return text
-    signed = PlatformText(text.title, f"{text.description.rstrip()}\n\n{account.signature.strip()}".strip(),
-                          list(text.hashtags))
-    return fit_to_rules(signed, rules, merge_title=False)
+    room = dict(rules, description_max=max(0, rules.get("description_max", 5000) - len(signature) - 2))
+    body = fit_to_rules(text, room, merge_title=False)
+    return PlatformText(body.title, f"{body.description}\n\n{signature}".strip(), body.hashtags)
 
 
 def create_post(video_path: Path, template: PlatformText, accounts: list[Account], run_at: datetime | None,

@@ -15,7 +15,7 @@ from sqlmodel import select
 from app import browser, config, posting, settings_store, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
-from app.models import Account, Category, Job, Post, utcnow
+from app.models import Account, AccountGroup, Category, Job, Post, utcnow
 from app.posting import local_tz
 from app.platforms import load_platforms, platform_name
 from app.texts import PlatformText, adapt_texts, fit_to_rules, parse_hashtags
@@ -61,6 +61,11 @@ def implemented_platforms() -> list[str]:
 def all_accounts() -> list[Account]:
     with get_session() as s:
         return list(s.exec(select(Account).order_by(Account.platform, Account.name)).all())
+
+
+def all_groups() -> list[AccountGroup]:
+    with get_session() as s:
+        return list(s.exec(select(AccountGroup).order_by(AccountGroup.name)).all())
 
 
 def accounts_needing_login() -> list[Account]:
@@ -120,7 +125,7 @@ def set_lang(code: str, request: Request):
 def new_post_page(request: Request):
     with get_session() as s:
         categories = s.exec(select(Category).order_by(Category.id)).all()
-    return render(request, "new_post.html", accounts=all_accounts(), categories=categories,
+    return render(request, "new_post.html", accounts=all_accounts(), categories=categories, groups=all_groups(),
                   need_login=accounts_needing_login(), dry_run=settings_store.get_bool("dry_run"),
                   timezone=settings_store.get("timezone"), error=request.query_params.get("error"))
 
@@ -233,8 +238,62 @@ def retry(job_id: int, request: Request):
 
 @router.post("/jobs/{job_id}/cancel", response_class=HTMLResponse)
 def cancel(job_id: int, request: Request):
-    worker.cancel_job(job_id)
+    if worker.cancel_job(job_id):
+        request.app.state.worker.abort(job_id)
     return posts_table(request)
+
+
+@router.post("/jobs/{job_id}/publish", response_class=HTMLResponse)
+def publish_real(job_id: int, request: Request):
+    if worker.publish_for_real(job_id):
+        request.app.state.worker.wake()
+    return posts_table(request)
+
+
+@router.post("/posts/{post_id}/publish", response_class=HTMLResponse)
+def publish_post_real(post_id: int, request: Request):
+    with get_session() as s:
+        ids = s.exec(select(Job.id).where(Job.post_id == post_id, Job.status == "dry_run")).all()
+    if [i for i in ids if worker.publish_for_real(i)]:
+        request.app.state.worker.wake()
+    return posts_table(request)
+
+
+@router.post("/posts/{post_id}/delete", response_class=HTMLResponse)
+def delete_post(post_id: int, request: Request):
+    worker.delete_post(post_id)
+    return posts_table(request)
+
+
+def load_job(job_id: int):
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        return (job, s.get(Account, job.account_id)) if job else (None, None)
+
+
+@router.get("/jobs/{job_id}/edit", response_class=HTMLResponse)
+def edit_job_page(job_id: int, request: Request):
+    job, account = load_job(job_id)
+    if not job:
+        return RedirectResponse("/posts", status_code=303)
+    return render(request, "job_edit.html", job=job, account=account, text=PlatformText.from_json(job.text_json),
+                  run_at_local=job.run_at.astimezone(local_tz()).strftime("%Y-%m-%dT%H:%M"),
+                  timezone=settings_store.get("timezone"), error=request.query_params.get("error"))
+
+
+@router.post("/jobs/{job_id}/edit")
+async def edit_job(job_id: int, request: Request):
+    form = await request.form()
+    try:
+        local = datetime.fromisoformat(str(form.get("run_at", "")))
+    except ValueError:
+        return RedirectResponse(f"/jobs/{job_id}/edit?error=post.err_date", status_code=303)
+    run_at = local.replace(tzinfo=local_tz()).astimezone(timezone.utc)
+    text = PlatformText(title=str(form.get("title", "")), description=str(form.get("description", "")),
+                        hashtags=parse_hashtags(str(form.get("hashtags", ""))))
+    if worker.update_job(job_id, text, run_at):
+        request.app.state.scheduler.schedule(run_at)
+    return RedirectResponse("/posts", status_code=303)
 
 
 @router.get("/debug/{job_id}/{name}")
@@ -263,7 +322,7 @@ def accounts_ctx() -> dict:
 @router.get("/accounts", response_class=HTMLResponse)
 def accounts_page(request: Request):
     later = [k for k in load_platforms() if k not in implemented_platforms()]
-    return render(request, "accounts.html", implemented=implemented_platforms(), later=later,
+    return render(request, "accounts.html", implemented=implemented_platforms(), later=later, groups=all_groups(),
                   need_login=accounts_needing_login(), error=request.query_params.get("error"), **accounts_ctx())
 
 
@@ -292,17 +351,85 @@ async def add_account(request: Request):
     return RedirectResponse("/accounts", status_code=303)
 
 
-@router.post("/accounts/{account_id}/rename", response_class=HTMLResponse)
-def rename_account(account_id: int, request: Request):
-    new_name = (request.headers.get("HX-Prompt") or "").strip()
-    if new_name:
+@router.get("/accounts/{account_id}/edit", response_class=HTMLResponse)
+def edit_account_page(account_id: int, request: Request):
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+    if not acc:
+        return RedirectResponse("/accounts", status_code=303)
+    return render(request, "account_edit.html", account=acc, mask=config.mask_secret)
+
+
+@router.post("/accounts/{account_id}/edit")
+async def edit_account(account_id: int, request: Request):
+    form = await request.form()
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+        if acc:
+            acc.name = str(form.get("name", "")).strip() or acc.name  # slug (profile folder) stays the same
+            acc.signature = str(form.get("signature", "")).strip()
+            if acc.platform == "telegram":
+                cfg = acc.cfg
+                if str(form.get("bot_token", "")).strip():
+                    cfg["bot_token"] = str(form.get("bot_token")).strip()
+                cfg["chat_id"] = str(form.get("chat_id", "")).strip() or cfg.get("chat_id", "")
+                acc.config = json.dumps(cfg)
+            s.add(acc)
+            s.commit()
+    return RedirectResponse("/accounts", status_code=303)
+
+
+@router.post("/accounts/{account_id}/test", response_class=HTMLResponse)
+def test_account(account_id: int, request: Request):
+    """Dry-run with the bundled 3-second test video: quick check that the platform steps still work."""
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+    if acc:
+        posting.create_post(config.ASSETS_DIR / "test_video.mp4",
+                            PlatformText("Web-API-Poster test", "Test video (dry-run)", ["test"]),
+                            [acc], None, True, category="test")
+        request.app.state.worker.wake()
+    return HTMLResponse("", headers={"HX-Redirect": "/posts"})
+
+
+# ---- account groups ----
+
+@router.post("/groups")
+async def add_group(request: Request):
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    ids = sorted({int(i) for i in form.getlist("account_ids") if str(i).isdigit()})
+    if name and ids:
         with get_session() as s:
-            acc = s.get(Account, account_id)
-            if acc:
-                acc.name = new_name  # slug (profile folder) stays the same
-                s.add(acc)
-                s.commit()
-    return accounts_table(request)
+            taken = {g.slug for g in s.exec(select(AccountGroup)).all()}
+            slug, n = config.slugify(name), 2
+            while slug in taken:
+                slug, n = f"{config.slugify(name)}-{n}", n + 1
+            s.add(AccountGroup(name=name, slug=slug, account_ids=json.dumps(ids),
+                               slots=str(form.get("slots", "")).strip()))
+            s.commit()
+    return RedirectResponse("/accounts", status_code=303)
+
+
+@router.post("/groups/{group_id}/slots")
+def set_group_slots(group_id: int, request: Request):
+    with get_session() as s:
+        group = s.get(AccountGroup, group_id)
+        if group:
+            group.slots = (request.headers.get("HX-Prompt") or "").strip()
+            s.add(group)
+            s.commit()
+    return HTMLResponse("", headers={"HX-Redirect": "/accounts"})
+
+
+@router.post("/groups/{group_id}/delete")
+def delete_group(group_id: int):
+    with get_session() as s:
+        group = s.get(AccountGroup, group_id)
+        if group:
+            s.delete(group)
+            s.commit()
+    return HTMLResponse("", headers={"HX-Redirect": "/accounts"})
 
 
 @router.post("/accounts/{account_id}/delete", response_class=HTMLResponse)
