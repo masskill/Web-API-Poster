@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("sched.title") }}</h1>
+{% set slot_groups = groups|selectattr("slot_times")|list %}
+{% if slot_groups %}
+  <p class="muted small">{{ t("sched.slots") }}:
+    {% for g in slot_groups %}<b>{{ g.name }}</b> {{ g.slot_times|join(", ") }}{{ "; " if not loop.last }}{% endfor %}</p>
+{% endif %}
+{% for day, rows in days.items() %}
+<section>
+  <h2>{{ day }}</h2>
+  <div class="table-wrap"><table>
+    {% for job, post, acc in rows %}
+    <tr>
+      <td class="small" style="width:70px">{{ fmt_dt(job.run_at)[-5:] }}</td>
+      <td>{{ post.title if post and post.title else "—" }}
+        {% if job.dry_run %}<span class="badge">dry-run</span>{% endif %}</td>
+      <td>{% if acc %}{{ platform_name(acc.platform) }} / {{ acc.name }}{% endif %}</td>
+      <td><span class="badge {{ job.status }}">{{ t("status." ~ job.status) }}</span></td>
+      <td>{% if job.status == "pending" %}<a class="btn secondary" href="/jobs/{{ job.id }}/edit">{{ t("posts.edit") }}</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% else %}
+<p class="muted">{{ t("sched.empty") }}</p>
+{% endfor %}
+{% endblock %}

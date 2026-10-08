@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     app.state.start_automation = lambda: scheduler.start_automation(
         login_check=lambda: browser.runner.submit(automation.check_all_logins()),
         cleanup=automation.cleanup,
+        inbox=lambda: automation.scan_inbox(on_created=scheduler.schedule),
     )
     app.state.start_automation()
     app.state.worker, app.state.scheduler = worker, scheduler

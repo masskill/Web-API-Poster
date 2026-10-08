@@ -83,6 +83,15 @@
       <label class="checks"><input type="radio" name="when" value="at"> {{ t("post.at") }}</label>
       <input type="datetime-local" name="scheduled_at">
     </div>
+    {% set slot_groups = groups|selectattr("slot_times")|list %}
+    {% if slot_groups %}
+    <div class="row">
+      <label class="checks"><input type="radio" name="when" value="slot"> {{ t("post.slot") }}</label>
+      <select name="slot_group" id="slot_group">
+        {% for g in slot_groups %}<option value="{{ g.id }}">{{ g.name }} ({{ g.slot_times|join(", ") }})</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <p class="muted small">{{ t("post.tz_note", tz=timezone) }}</p>
     <label class="checks"><input type="checkbox" name="dry_run" value="1" {{ "checked" if dry_run }}> {{ t("post.dry_run") }}</label>
   </section>
@@ -96,6 +105,8 @@ document.querySelectorAll(".group-btn").forEach(btn => btn.addEventListener("cli
   const boxes = [...document.querySelectorAll(".acc-cb")];
   boxes.forEach(cb => { cb.checked = ids.includes(cb.value); });
   document.getElementById("group_id").value = btn.dataset.group;
+  const slotSelect = document.getElementById("slot_group");
+  if (slotSelect && [...slotSelect.options].some(o => o.value === btn.dataset.group)) slotSelect.value = btn.dataset.group;
   if (boxes.length) boxes[0].dispatchEvent(new Event("change", {bubbles: true}));
 }));
 </script>

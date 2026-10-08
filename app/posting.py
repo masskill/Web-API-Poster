@@ -1,4 +1,5 @@
 """Creating publications (from the form, the inbox folder or a platform test) and posting slots."""
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -17,6 +18,12 @@ def local_tz() -> ZoneInfo:
         return ZoneInfo(settings_store.get("timezone"))
     except Exception:
         return ZoneInfo("Europe/Kyiv")
+
+
+def media_name(filename: str) -> str:
+    """Unique, filesystem-safe name for a video stored in data/media."""
+    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in Path(filename or "video.mp4").name)
+    return f"{uuid.uuid4().hex[:8]}_{safe}"
 
 
 def with_signature(text: PlatformText, account: Account, rules: dict) -> PlatformText:

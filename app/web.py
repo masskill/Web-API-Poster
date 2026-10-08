@@ -3,7 +3,6 @@ import asyncio
 import html
 import json
 import shutil
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -13,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from app import browser, config, posting, settings_store, worker
+from app import automation, browser, config, posting, settings_store, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
 from app.models import Account, AccountGroup, Category, Job, Post, utcnow
@@ -135,8 +134,7 @@ def new_post_page(request: Request):
 @router.post("/upload", response_class=HTMLResponse)
 def upload_video(request: Request, video: UploadFile):
     config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in Path(video.filename or "video.mp4").name)
-    name = f"{uuid.uuid4().hex[:8]}_{safe}"
+    name = posting.media_name(video.filename or "video.mp4")
     with open(media_path(name), "wb") as f:
         shutil.copyfileobj(video.file, f)
     info, warning = None, None
@@ -193,17 +191,26 @@ async def create_post(request: Request):
         return RedirectResponse("/?error=post.err_video", status_code=303)
     if not accounts:
         return RedirectResponse("/?error=post.err_accounts", status_code=303)
-    run_at = utcnow()
+    group = None
+    group_id = str(form.get("slot_group") if form.get("when") == "slot" else form.get("group_id", ""))
+    if group_id.isdigit():
+        with get_session() as s:
+            group = s.get(AccountGroup, int(group_id))
+    run_at, scheduled = utcnow(), None
     if form.get("when") == "at":
         try:
             local = datetime.fromisoformat(str(form.get("scheduled_at", "")))
-            run_at = local.replace(tzinfo=local_tz()).astimezone(timezone.utc)
+            run_at = scheduled = local.replace(tzinfo=local_tz()).astimezone(timezone.utc)
         except ValueError:
             return RedirectResponse("/?error=post.err_date", status_code=303)
+    elif form.get("when") == "slot":
+        slot = posting.next_free_slot(group) if group else None
+        if slot is None:
+            return RedirectResponse("/?error=post.err_no_slots", status_code=303)
+        run_at = scheduled = slot
     texts = {a.platform: text_from_form(form, a.platform) for a in accounts if text_from_form(form, a.platform)}
-    posting.create_post(media_path(name), template_from_form(form), accounts,
-                        run_at if form.get("when") == "at" else None, form.get("dry_run") == "1",
-                        category=str(form.get("category", "")), texts=texts)
+    posting.create_post(media_path(name), template_from_form(form), accounts, scheduled, form.get("dry_run") == "1",
+                        category=str(form.get("category", "")), texts=texts, group_id=group.id if group else None)
     request.app.state.scheduler.schedule(run_at)
     return RedirectResponse("/posts?created=1", status_code=303)
 
@@ -307,6 +314,23 @@ def debug_file(job_id: int, name: str):
     return FileResponse(path, media_type=media[name.rsplit(".", 1)[1]])
 
 
+# ---- schedule ----
+
+@router.get("/schedule", response_class=HTMLResponse)
+def schedule_page(request: Request):
+    """Upcoming jobs grouped by local date."""
+    with get_session() as s:
+        jobs = s.exec(select(Job).where(Job.status.in_(["pending", "running", "needs_action"]))
+                      .order_by(Job.run_at, Job.id)).all()
+        posts = {p.id: p for p in s.exec(select(Post).where(Post.id.in_({j.post_id for j in jobs}))).all()}
+        accounts = {a.id: a for a in s.exec(select(Account)).all()}
+    days: dict[str, list] = {}
+    for job in jobs:
+        day = job.run_at.astimezone(local_tz()).strftime("%d.%m.%Y")
+        days.setdefault(day, []).append((job, posts.get(job.post_id), accounts.get(job.account_id)))
+    return render(request, "schedule.html", days=days, groups=all_groups())
+
+
 # ---- accounts ----
 
 def accounts_ctx() -> dict:
@@ -324,7 +348,9 @@ def accounts_ctx() -> dict:
 @router.get("/accounts", response_class=HTMLResponse)
 def accounts_page(request: Request):
     later = [k for k in load_platforms() if k not in implemented_platforms()]
-    return render(request, "accounts.html", implemented=implemented_platforms(), later=later, groups=all_groups(),
+    groups = all_groups()
+    return render(request, "accounts.html", implemented=implemented_platforms(), later=later, groups=groups,
+                  inbox_paths={g.id: str(automation.inbox_dir() / g.slug) for g in groups},
                   need_login=accounts_needing_login(), error=request.query_params.get("error"), **accounts_ctx())
 
 

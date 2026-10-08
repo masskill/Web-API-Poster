@@ -22,6 +22,7 @@
       </div>
       <div class="small">{% for a in accounts if a.id in g.ids %}{{ platform_name(a.platform) }} / {{ a.name }}{{ ", " if not loop.last }}{% endfor %}</div>
       <div class="small muted">{{ t("grp.slots") }}: {{ g.slot_times|join(", ") if g.slot_times else t("grp.no_slots") }}</div>
+      <div class="small muted">{{ t("grp.inbox") }}: <code>{{ inbox_paths[g.id] }}</code></div>
     </div>
   {% else %}
     <p class="muted">{{ t("grp.none") }}</p>
