@@ -30,7 +30,7 @@ DEFAULTS = {
     "auto_retry_minutes": "10, 30",  # delay before each retry
     "login_check_time": "09:00",  # daily login check of all accounts (local time, empty = off)
     "keep_days": "30",  # debug files and finished videos are deleted after N days (0 = never)
-    "inbox_dir": "",  # folder for the content inbox (empty = data/inbox)
+    "inbox_dir": os.getenv("INBOX_DIR", ""),  # folder for the content inbox (empty = data/inbox)
 }
 
 SECRET_KEYS = {"openai_api_key", "anthropic_api_key", "notify_bot_token"}

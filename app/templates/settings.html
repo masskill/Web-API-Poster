@@ -109,6 +109,8 @@
         <input type="number" name="keep_days" min="0" value="{{ s.keep_days }}">
       </div>
     </div>
+    <label>{{ t("set.inbox_dir") }}</label>
+    <input type="text" name="inbox_dir" value="{{ s.inbox_dir }}" placeholder="data/inbox">
     <p class="muted small">{{ t("set.automation_hint") }}</p>
   </section>
 
