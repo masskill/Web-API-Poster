@@ -41,10 +41,15 @@ def fmt_dt(dt: datetime | None) -> str:
     return dt.astimezone(local_tz()).strftime("%d.%m.%Y %H:%M") if dt else ""
 
 
+THEMES = ("auto", "dark", "light")
+
+
 def render(request: Request, template: str, status_code: int = 200, **ctx) -> HTMLResponse:
     lang = get_lang(request)
+    theme = request.cookies.get("theme")
     ctx.update(
         lang=lang,
+        theme=theme if theme in THEMES else "auto",
         t=lambda key, **kw: translate(lang, key, **kw),
         platforms=load_platforms(),
         platform_name=platform_name,
@@ -117,6 +122,14 @@ def set_lang(code: str, request: Request):
     resp = RedirectResponse(request.headers.get("referer") or "/", status_code=303)
     if code in LANGS:
         resp.set_cookie("lang", code, max_age=3600 * 24 * 365)
+    return resp
+
+
+@router.get("/theme/{mode}")
+def set_theme(mode: str, request: Request):
+    resp = RedirectResponse(request.headers.get("referer") or "/", status_code=303)
+    if mode in THEMES:
+        resp.set_cookie("theme", mode, max_age=3600 * 24 * 365)
     return resp
 
 

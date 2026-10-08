@@ -81,3 +81,13 @@ def test_slugify_is_ascii():
     assert config.slugify("Рецепти") == "retsepty"
     assert config.slugify("Новости Ёж") == "novosty-ezh"
     assert config.slugify("🎵") == "account"
+
+
+def test_theme_switch(client):
+    assert "data-theme" not in client.get("/").text.split(">", 2)[1]  # default: follow the system
+    r = client.get("/theme/dark", headers={"referer": "/settings"}, follow_redirects=False)
+    assert r.headers["location"] == "/settings" and "theme=dark" in r.headers["set-cookie"]
+    client.cookies.set("theme", "dark")
+    assert '<html lang="uk" data-theme="dark">' in client.get("/").text
+    r = client.get("/theme/purple", follow_redirects=False)
+    assert "set-cookie" not in r.headers
