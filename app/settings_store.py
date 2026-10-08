@@ -20,9 +20,21 @@ DEFAULTS = {
     "action_pause_max": "4",
     "job_pause_min": "20",  # seconds between jobs
     "job_pause_max": "60",
+    # notifications to the owner via a Telegram bot
+    "notify_bot_token": os.getenv("NOTIFY_BOT_TOKEN", ""),
+    "notify_chat_id": os.getenv("NOTIFY_CHAT_ID", ""),
+    "notify_success": "1",  # also notify about successful publications
+    "notify_lang": "uk",
+    # automation
+    "auto_retry": "2",  # automatic retries after network / upload / page errors
+    "auto_retry_minutes": "10, 30",  # delay before each retry
+    "login_check_time": "09:00",  # daily login check of all accounts (local time, empty = off)
+    "keep_days": "30",  # debug files and finished videos are deleted after N days (0 = never)
+    "inbox_dir": "",  # folder for the content inbox (empty = data/inbox)
 }
 
-SECRET_KEYS = {"openai_api_key", "anthropic_api_key"}
+SECRET_KEYS = {"openai_api_key", "anthropic_api_key", "notify_bot_token"}
+BOOL_KEYS = {"headless", "dry_run", "notify_success"}
 
 
 def get(key: str) -> str:

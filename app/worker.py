@@ -9,7 +9,11 @@ from sqlmodel import func, select
 
 from app import browser, config, settings_store
 from app.db import get_session
+from app.i18n import translate
 from app.models import Account, Job, Post, utcnow
+from app.notify import message, notify
+from app.platforms import platform_name
+from app.posting import local_tz
 from app.publishers.base import NeedsUserAction, PublishResult
 from app.texts import PlatformText
 
@@ -17,6 +21,8 @@ logger = logging.getLogger("poster.worker")
 
 POLL_SECONDS = 30
 MAX_USER_ROUNDS = 3
+# Errors that may pass by themselves; others (login, captcha, file too large...) need a person.
+RETRY_CODES = {"network", "upload", "selector", "exception"}
 
 # Login button state per account id: queued | waiting | ok | timeout | error
 login_state: dict[int, str] = {}
@@ -77,7 +83,7 @@ def retry_job(job_id: int) -> bool:
         job = s.get(Job, job_id)
         if not job or job.status not in ("failed", "cancelled", "dry_run"):
             return False
-        job.status, job.run_at = "pending", utcnow()
+        job.status, job.run_at, job.attempts = "pending", utcnow(), 0
         job.error = job.error_code = job.debug_dir = job.result_url = None
         s.add(job)
         s.commit()
@@ -90,7 +96,7 @@ def publish_for_real(job_id: int) -> bool:
         job = s.get(Job, job_id)
         if not job or job.status != "dry_run":
             return False
-        job.dry_run, job.status, job.run_at = False, "pending", utcnow()
+        job.dry_run, job.status, job.run_at, job.attempts = False, "pending", utcnow(), 0
         job.error = job.error_code = job.debug_dir = job.result_url = None
         s.add(job)
         s.commit()
@@ -103,7 +109,7 @@ def update_job(job_id: int, text: PlatformText, run_at: datetime) -> bool:
         job = s.get(Job, job_id)
         if not job or job.status not in ("pending", "failed", "cancelled"):
             return False
-        job.text_json, job.run_at, job.status = text.to_json(), run_at, "pending"
+        job.text_json, job.run_at, job.status, job.attempts = text.to_json(), run_at, "pending", 0
         job.error = job.error_code = None
         s.add(job)
         s.commit()
@@ -170,6 +176,15 @@ def daily_limit_wait(account_id: int) -> timedelta | None:
     return oldest + timedelta(hours=24) - utcnow()
 
 
+def retry_delay(attempts: int) -> timedelta | None:
+    """Delay before the next automatic retry, or None when retries are used up."""
+    if attempts > settings_store.get_int("auto_retry"):
+        return None
+    minutes = [float(m) for m in settings_store.get("auto_retry_minutes").replace(";", ",").split(",")
+               if m.strip().replace(".", "", 1).isdigit()] or [10.0]
+    return timedelta(minutes=minutes[min(attempts, len(minutes)) - 1])
+
+
 def finish_job(job_id: int, result: PublishResult, debug_dir: str | None) -> None:
     with get_session() as s:
         job = s.get(Job, job_id)
@@ -182,8 +197,37 @@ def finish_job(job_id: int, result: PublishResult, debug_dir: str | None) -> Non
         job.error_code, job.error = result.error_code, result.error
         job.debug_dir = debug_dir or job.debug_dir
         job.finished_at = utcnow()
+        delay = retry_delay(job.attempts) if job.status == "failed" and job.error_code in RETRY_CODES else None
+        if delay is not None:  # transient error: queue again automatically
+            job.status, job.run_at = "pending", utcnow() + delay
         s.add(job)
         s.commit()
+
+
+async def notify_job(job_id: int, account: Account, title: str) -> None:
+    """Tell the owner how the job ended (if notifications are configured)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+    if job is None:
+        return
+    who = f"{platform_name(account.platform)} / {account.name}: «{title or '—'}»"
+    lang = settings_store.get("notify_lang") or "uk"
+    error = (translate(lang, f"err.{job.error_code}") if job.error_code else "") + (f"\n{job.error}" if job.error else "")
+    success = settings_store.get_bool("notify_success")
+    if job.status == "published" and job.error_code == "unconfirmed":
+        text = message("notify.unconfirmed", who=who)
+    elif job.status == "published" and success:
+        text = message("notify.published", who=who, url=job.result_url or "")
+    elif job.status == "dry_run" and success:
+        text = message("notify.dry_run", who=who)
+    elif job.status == "pending" and job.error_code in RETRY_CODES:
+        text = message("notify.retry", who=who, error=error,
+                       time=job.run_at.astimezone(local_tz()).strftime("%d.%m %H:%M"))
+    elif job.status == "failed":
+        text = message("notify.failed", who=who, error=error, debug=job.debug_dir or "")
+    else:
+        return
+    await notify(text)
 
 
 class Worker:
@@ -274,6 +318,7 @@ class Worker:
         if result.status == "failed" and debug_dir is None:
             debug_dir = await browser.save_debug(job_id, log.lines)
         finish_job(job_id, result, debug_dir)
+        await notify_job(job_id, account, post.title)
 
     async def _browser_publish(self, job_id, publisher, account, video, text, dry_run, log):
         from playwright.async_api import async_playwright
@@ -292,6 +337,9 @@ class Worker:
                             d = await browser.save_debug(job_id, log.lines, page)
                             return PublishResult("failed", error_code=f"{e.code}_headless"), d
                         set_status(job_id, "needs_action", e.code)
+                        await notify(message("notify.needs_action", reason=translate(
+                            settings_store.get("notify_lang") or "uk", f"err.{e.code}"),
+                            who=f"{platform_name(account.platform)} / {account.name}"))
                         check = e.check or (lambda: publisher.is_logged_in(page))
                         ok = await browser.wait_until(
                             check, settings_store.get_float("user_wait_minutes"),
@@ -366,7 +414,7 @@ async def login_account(account_id: int, publishers: dict | None = None) -> str:
     return login_state[account_id]
 
 
-async def check_login(account_id: int, publishers: dict | None = None) -> bool:
+async def check_login(account_id: int, publishers: dict | None = None, headless: bool | None = None) -> bool:
     from playwright.async_api import async_playwright
 
     publishers = publishers or default_publishers()
@@ -377,7 +425,7 @@ async def check_login(account_id: int, publishers: dict | None = None) -> bool:
         browser.mark_logged_in(account_id, ok)
         return ok
     async with browser.BROWSER_LOCK, async_playwright() as pw:
-        ctx = await browser.open_context(pw, account, settings_store.get_bool("headless"))
+        ctx = await browser.open_context(pw, account, settings_store.get_bool("headless") if headless is None else headless)
         try:
             page = await browser.first_page(ctx)
             await page.goto(publisher.check_url)

@@ -32,7 +32,8 @@
       <td><span class="badge {{ job.status }}">{{ t("status." ~ job.status) }}</span>
         {% if job.error_code %}<div class="small {{ 'warn' if job.status in ('pending', 'needs_action', 'published') else 'error' }}">{{ t("err." ~ job.error_code) }}</div>{% endif %}
         {% if job.error %}<div class="small error">{{ job.error }}</div>{% endif %}</td>
-      <td class="small">{{ fmt_dt(job.finished_at or job.started_at or job.run_at) }}</td>
+      <td class="small">{% if job.status == "pending" and job.error_code %}{{ t("posts.retry_at", dt=fmt_dt(job.run_at)) }}
+        {% elif job.status == "pending" %}{{ fmt_dt(job.run_at) }}{% else %}{{ fmt_dt(job.finished_at or job.started_at or job.run_at) }}{% endif %}</td>
       <td class="small">
         {% if job.result_url %}<a href="{{ job.result_url }}" target="_blank" rel="noopener">{{ t("posts.open") }}</a><br>{% endif %}
         {% if job.debug_dir %}{{ t("posts.debug") }}: <code>{{ job.debug_dir }}</code><br>

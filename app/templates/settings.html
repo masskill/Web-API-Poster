@@ -58,6 +58,60 @@
     </div>
   </section>
 
+  <section>
+    <h2>{{ t("set.notify") }}</h2>
+    <p class="muted small">{{ t("set.notify_hint") }}</p>
+    <div class="row">
+      <div>
+        <label>{{ t("acc.bot_token") }}
+          {% if s.notify_bot_token %}<span class="muted small">({{ t("set.key_saved", mask=mask(s.notify_bot_token)) }})</span>{% endif %}</label>
+        <input type="password" name="notify_bot_token" placeholder="{{ t('set.key_keep') }}" autocomplete="off">
+        {% if s.notify_bot_token %}<label class="checks small"><input type="checkbox" name="clear_notify_bot_token" value="1"> {{ t("set.key_clear") }}</label>{% endif %}
+      </div>
+      <div>
+        <label>{{ t("set.notify_chat_id") }}</label>
+        <input type="text" name="notify_chat_id" value="{{ s.notify_chat_id }}" placeholder="123456789">
+      </div>
+    </div>
+    <div class="row">
+      <label class="checks"><input type="checkbox" name="notify_success" value="1" {{ "checked" if s.notify_success == "1" }}> {{ t("set.notify_success") }}</label>
+      <div>
+        <label>{{ t("set.notify_lang") }}</label>
+        <select name="notify_lang">
+          <option value="uk" {{ "selected" if s.notify_lang == "uk" }}>Українська</option>
+          <option value="ru" {{ "selected" if s.notify_lang == "ru" }}>Русский</option>
+        </select>
+      </div>
+    </div>
+    <button type="button" class="secondary" hx-post="/settings/notify-test" hx-target="#notify-result">{{ t("set.notify_test") }}</button>
+    <span id="notify-result" class="small"></span>
+  </section>
+
+  <section>
+    <h2>{{ t("set.automation") }}</h2>
+    <div class="row">
+      <div>
+        <label>{{ t("set.auto_retry") }}</label>
+        <input type="number" name="auto_retry" min="0" max="10" value="{{ s.auto_retry }}">
+      </div>
+      <div>
+        <label>{{ t("set.auto_retry_minutes") }}</label>
+        <input type="text" name="auto_retry_minutes" value="{{ s.auto_retry_minutes }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>{{ t("set.login_check_time") }}</label>
+        <input type="text" name="login_check_time" value="{{ s.login_check_time }}" placeholder="09:00">
+      </div>
+      <div>
+        <label>{{ t("set.keep_days") }}</label>
+        <input type="number" name="keep_days" min="0" value="{{ s.keep_days }}">
+      </div>
+    </div>
+    <p class="muted small">{{ t("set.automation_hint") }}</p>
+  </section>
+
   <button type="submit">{{ t("common.save") }}</button>
 </form>
 

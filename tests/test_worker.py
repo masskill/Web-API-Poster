@@ -75,6 +75,7 @@ def test_dry_run_status(tmp_path):
 
 
 def test_exception_marks_failed_with_debug(tmp_path):
+    settings_store.set_value("auto_retry", "0")
     job = run_job(make_job(tmp_path), RuntimeError("boom"))
     assert job.status == "failed" and "boom" in job.error
     assert job.debug_dir
@@ -82,6 +83,7 @@ def test_exception_marks_failed_with_debug(tmp_path):
 
 
 def test_retry_and_cancel(tmp_path):
+    settings_store.set_value("auto_retry", "0")
     job_id = run_job(make_job(tmp_path), RuntimeError("boom")).id
     assert retry_job(job_id)
     assert get_job(job_id).status == "pending" and get_job(job_id).error is None
@@ -142,3 +144,30 @@ def test_job_log_appends(tmp_path):
     log("one")
     log("two")
     assert get_job(job_id).log.count("\n") == 1 and len(log.lines) == 2
+
+
+def test_auto_retry_then_give_up(tmp_path):
+    settings_store.set_value("auto_retry", "2")
+    settings_store.set_value("auto_retry_minutes", "10, 30")
+    job_id = make_job(tmp_path)
+    job = run_job(job_id, RuntimeError("network down"))
+    assert job.status == "pending" and job.error_code == "exception"
+    assert timedelta(minutes=9) < job.run_at - utcnow() <= timedelta(minutes=10)
+    for minutes in (30, None):
+        with get_session() as s:  # make it due now
+            j = s.get(Job, job_id)
+            j.run_at = utcnow()
+            s.add(j)
+            s.commit()
+        job = run_job(job_id, RuntimeError("network down"))
+        if minutes:
+            assert job.status == "pending" and job.run_at - utcnow() > timedelta(minutes=29)
+    assert job.status == "failed" and job.attempts == 3
+
+
+def test_no_auto_retry_after_unconfirmed_or_login(tmp_path):
+    settings_store.set_value("auto_retry", "2")
+    job = run_job(make_job(tmp_path), PublishResult("published", error_code="unconfirmed"))
+    assert job.status == "published"
+    job = run_job(make_job(tmp_path), PublishResult("failed", error_code="login_headless"))
+    assert job.status == "failed"

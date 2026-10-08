@@ -1,5 +1,6 @@
 """Web UI routes (server-rendered Jinja2 + HTMX)."""
 import asyncio
+import html
 import json
 import shutil
 import uuid
@@ -16,6 +17,7 @@ from app import browser, config, posting, settings_store, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
 from app.models import Account, AccountGroup, Category, Job, Post, utcnow
+from app.notify import message, notify
 from app.posting import local_tz
 from app.platforms import load_platforms, platform_name
 from app.texts import PlatformText, adapt_texts, fit_to_rules, parse_hashtags
@@ -490,7 +492,7 @@ async def save_settings(request: Request):
     except Exception:
         return RedirectResponse("/settings?error=set.err_timezone", status_code=303)
     for key in settings_store.DEFAULTS:
-        if key in ("headless", "dry_run"):
+        if key in settings_store.BOOL_KEYS:
             settings_store.set_value(key, "1" if form.get(key) == "1" else "0")
         elif key in settings_store.SECRET_KEYS:
             if form.get(f"clear_{key}") == "1":
@@ -499,7 +501,18 @@ async def save_settings(request: Request):
                 settings_store.set_value(key, str(form.get(key)).strip())
         elif key in form:
             settings_store.set_value(key, str(form.get(key)).strip())
+    request.app.state.start_automation()  # login check time may have changed
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@router.post("/settings/notify-test", response_class=HTMLResponse)
+async def notify_test(request: Request):
+    error = await notify(message("notify.test"))
+    lang = get_lang(request)
+    if error is None:
+        return HTMLResponse(f'<span class="ok">{translate(lang, "set.notify_sent")}</span>')
+    text = translate(lang, "set.notify_not_configured") if error == "not_configured" else error
+    return HTMLResponse(f'<span class="error">{html.escape(text)}</span>')
 
 
 @router.post("/categories")

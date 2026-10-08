@@ -1,5 +1,7 @@
 # Starts Web-API-Poster on http://127.0.0.1:8000 (Windows PowerShell 5.1)
 # Usage: powershell -ExecutionPolicy Bypass -File .\run.ps1
+#        -LogFile <path>  also write the server log to a file (used by install-autostart.ps1)
+param([string]$LogFile = "")
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
@@ -20,6 +22,11 @@ if (-not (Test-Path ".\.env")) {
 
 if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
     Write-Warning "ffprobe not found: video checks are disabled. Install ffmpeg (see README)."
+}
+
+if ($LogFile) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null
+    $env:LOG_FILE = $LogFile
 }
 
 Write-Host "Open http://127.0.0.1:8000 in your browser. Stop: Ctrl+C"

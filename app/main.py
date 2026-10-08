@@ -2,6 +2,7 @@
 import base64
 import binascii
 import logging
+import os
 import secrets
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -9,11 +10,16 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from app import browser, config, db, web
+from app import automation, browser, config, db, web
 from app.scheduler import Scheduler
 from app.worker import Worker, interrupt_stale_jobs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+if os.getenv("LOG_FILE"):  # set by run.ps1 -LogFile (autostart runs without a visible console)
+    _file = logging.FileHandler(os.environ["LOG_FILE"], encoding="utf-8")
+    _file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    for _name in ("", "uvicorn", "uvicorn.access"):  # uvicorn.error propagates to "uvicorn"
+        logging.getLogger(_name).addHandler(_file)
 
 
 @asynccontextmanager
@@ -23,8 +29,13 @@ async def lifespan(app: FastAPI):
     browser.runner.start()
     worker = Worker()
     browser.runner.submit(worker.run_forever())
-    scheduler = Scheduler(worker.wake)
+    scheduler = Scheduler(worker.wake, preflight=lambda run_at: browser.runner.submit(automation.preflight(run_at)))
     scheduler.start()
+    app.state.start_automation = lambda: scheduler.start_automation(
+        login_check=lambda: browser.runner.submit(automation.check_all_logins()),
+        cleanup=automation.cleanup,
+    )
+    app.state.start_automation()
     app.state.worker, app.state.scheduler = worker, scheduler
     yield
     scheduler.shutdown()
