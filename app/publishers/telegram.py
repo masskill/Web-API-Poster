@@ -81,12 +81,17 @@ class TelegramPublisher:
                     self.log("dry-run: sendVideo skipped")
                     return PublishResult("dry_run")
                 self.log(f"sendVideo: {video.name}, {size_mb:.1f} MB")
-                with open(video, "rb") as f:
-                    msg = await self._call(
-                        c, "sendVideo",
-                        data={"chat_id": self.chat_id, "caption": text.caption(), "supports_streaming": "true"},
-                        files={"video": (video.name, f)},
-                    )
+                try:
+                    with open(video, "rb") as f:
+                        msg = await self._call(
+                            c, "sendVideo",
+                            data={"chat_id": self.chat_id, "caption": text.caption(), "supports_streaming": "true"},
+                            files={"video": (video.name, f)},
+                        )
+                except TelegramError as e:
+                    if "Timeout" in str(e):  # the file may have reached Telegram: never send it twice
+                        return PublishResult("published", error_code="unconfirmed", error=str(e))
+                    raise
         except TelegramError as e:
             return PublishResult("failed", error_code="telegram", error=str(e))
         return PublishResult("published", url=message_url(chat, msg["message_id"]))

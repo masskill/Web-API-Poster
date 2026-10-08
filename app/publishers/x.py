@@ -37,8 +37,7 @@ class XPublisher(BrowserPublisher):
             return PublishResult("failed", error_code="upload", error="Post button stayed disabled")
         if dry_run:
             return self.dry_run_result()
-        self.go("click Post")
-        await self.click(page, SELECTORS["post"])
+        await self.submit(page, SELECTORS["post"])
         url = await self.href(page, SELECTORS["posted_link"], base="https://x.com")
         self.log(f"post url: {url or 'not found'}")
         return PublishResult("published", url=url)

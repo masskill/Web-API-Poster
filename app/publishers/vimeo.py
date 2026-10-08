@@ -40,10 +40,11 @@ class VimeoPublisher(BrowserPublisher):
             self.log("Vimeo publishes right after upload, so dry-run does not upload the file")
             return self.dry_run_result()
         await self.upload_file(page, video, SELECTORS["file_input"])
+        self.submitted = True  # on Vimeo the upload itself publishes the video
         self.go("wait for the video link")
         link = await self.href(page, SELECTORS["manage_link"], "https://vimeo.com", self.upload_timeout(video))
         if not link:
-            return PublishResult("failed", error_code="upload", error="uploaded video link not found")
+            return PublishResult("published", error_code="unconfirmed", error="uploaded video link not found")
         match = re.search(r"/videos/(\d+)", link)
         url = f"https://vimeo.com/{match.group(1)}" if match else None
         self.go("open video settings")

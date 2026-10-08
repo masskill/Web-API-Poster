@@ -50,7 +50,6 @@ class DailymotionPublisher(BrowserPublisher):
             return PublishResult("failed", error_code="upload", error="Publish button stayed disabled")
         if dry_run:
             return self.dry_run_result()
-        self.go("click Publish")
-        await self.click(page, SELECTORS["publish"])
+        await self.submit(page, SELECTORS["publish"])
         await self.confirm(page, SELECTORS["published"], self.step_timeout)
         return PublishResult("published", url=None)

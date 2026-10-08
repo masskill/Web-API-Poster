@@ -64,12 +64,19 @@ async def open_context(pw, account: Account, headless: bool, log=None):
     """Launch Edge (or fallback Chromium) with the account's own profile.
 
     If the profile is empty (e.g. a new server) but a session file exists,
-    cookies from that file are loaded, so the saved login keeps working.
+    cookies and localStorage from that file are loaded, so the saved login keeps working.
     """
     profile = profile_dir(account)
     profile.mkdir(parents=True, exist_ok=True)
     fresh = not any(profile.iterdir())
-    opts = {"headless": headless, "no_viewport": not headless}
+    opts = {
+        "headless": headless,
+        "no_viewport": not headless,
+        # Without these flags the browser reports itself as automated and Google
+        # refuses the manual sign-in ("this browser may not be secure").
+        "ignore_default_args": ["--enable-automation"],
+        "args": ["--disable-blink-features=AutomationControlled"],
+    }
     channel = settings_store.get("browser_channel").strip()
     try:
         ctx = await pw.chromium.launch_persistent_context(str(profile), channel=channel or None, **opts)
@@ -82,9 +89,21 @@ async def open_context(pw, account: Account, headless: bool, log=None):
     if fresh and sf.exists():
         state = json.loads(sf.read_text(encoding="utf-8"))
         await ctx.add_cookies(state.get("cookies", []))
+        storage = {o["origin"]: [[i["name"], i["value"]] for i in o.get("localStorage", [])]
+                   for o in state.get("origins", [])}
+        if storage:
+            await ctx.add_init_script(script=RESTORE_STORAGE_JS % json.dumps(storage))
         if log:
-            log("empty profile: cookies loaded from session file")
+            log("empty profile: cookies and localStorage loaded from session file")
     return ctx
+
+
+# Puts saved localStorage items back (only those missing) when a page of that origin opens.
+RESTORE_STORAGE_JS = """(saved => {
+  const items = saved[location.origin];
+  if (!items) return;
+  try { for (const [k, v] of items) if (localStorage.getItem(k) === null) localStorage.setItem(k, v); } catch (e) {}
+})(%s);"""
 
 
 async def first_page(ctx):

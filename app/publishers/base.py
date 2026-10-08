@@ -70,6 +70,9 @@ class BrowserPublisher:
         self.account = account
         self.log = log
         self.step = ""
+        # True once the final "publish" button was pressed: after that a failure must not lead to a retry,
+        # or the post would be published twice.
+        self.submitted = False
 
     # ---- login / blockers ----
 
@@ -108,12 +111,15 @@ class BrowserPublisher:
     # ---- publishing ----
 
     async def publish(self, page, video: Path, text: PlatformText, dry_run: bool) -> PublishResult:
+        self.submitted = False
         try:
             return await self._publish(page, video, text, dry_run)
         except PlaywrightTimeout as e:
+            error = f"step '{self.step}': {str(e).splitlines()[0]}"
+            if self.submitted:
+                return PublishResult("published", error_code="unconfirmed", error=error)
             await self.check_blockers(page)  # a login page or captcha may have appeared mid-way
-            return PublishResult("failed", error_code="selector",
-                                 error=f"step '{self.step}': {str(e).splitlines()[0]}")
+            return PublishResult("failed", error_code="selector", error=error)
 
     async def _publish(self, page, video: Path, text: PlatformText, dry_run: bool) -> PublishResult:
         raise NotImplementedError
@@ -203,14 +209,23 @@ class BrowserPublisher:
             link = base + link
         return link
 
+    async def submit(self, page, selector: str) -> None:
+        """Press the final publish button (marks the job as submitted)."""
+        self.go("click the final publish button")
+        await self.click(page, selector)
+        self.submitted = True
+
     def dry_run_result(self, url: str | None = None) -> PublishResult:
         self.log("dry-run: stopped before the final publish button")
         return PublishResult("dry_run", url=url)
 
-    async def confirm(self, page, selector: str, timeout: int) -> bool:
-        """Wait for a sign that the post went out; log if it was not seen."""
-        if await self.visible(page, selector, timeout):
+    async def confirm(self, page, selector: str, timeout: int, state: str = "visible") -> bool:
+        """Wait for a sign that the post went out (an element appears, or the composer is hidden)."""
+        try:
+            await page.locator(selector).first.wait_for(state=state, timeout=timeout)
             self.log("publish confirmed")
             return True
+        except Exception:
+            pass
         self.log("confirmation not detected; check the post on the site")
         return False

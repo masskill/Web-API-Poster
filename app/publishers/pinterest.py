@@ -3,6 +3,7 @@
 The Pin goes to the board that Pinterest pre-selects (usually the last used one);
 if no board is selected, the first board in the list is chosen.
 """
+import re
 from pathlib import Path
 
 from app.publishers.base import BrowserPublisher, PublishResult, button
@@ -26,6 +27,9 @@ SELECTORS = {
     "published": "text=/pin (has been )?published|опубліковано|опубликован/i",  # verify
 }
 
+# Text of the board button when no board is selected yet; verify
+BOARD_PLACEHOLDER = re.compile(r"^\s*$|choose|select|вибер|выбер", re.I)
+
 
 class PinterestPublisher(BrowserPublisher):
     platform = "pinterest"
@@ -48,7 +52,7 @@ class PinterestPublisher(BrowserPublisher):
         self.go("fill description")
         await self.fill(page, SELECTORS["description"], text.caption())
         board = page.locator(SELECTORS["board_dropdown"]).first
-        if await board.count() and not (await board.inner_text()).strip():
+        if await board.count() and BOARD_PLACEHOLDER.search(await board.inner_text() or "choose"):
             self.go("choose first board")
             await self.click(page, SELECTORS["board_dropdown"])
             await self.click(page, SELECTORS["board_first"])
@@ -57,7 +61,6 @@ class PinterestPublisher(BrowserPublisher):
             return PublishResult("failed", error_code="upload", error="Publish button stayed disabled")
         if dry_run:
             return self.dry_run_result()
-        self.go("click Publish")
-        await self.click(page, SELECTORS["publish"])
+        await self.submit(page, SELECTORS["publish"])
         await self.confirm(page, SELECTORS["published"], self.upload_timeout(video))
         return PublishResult("published", url=None)

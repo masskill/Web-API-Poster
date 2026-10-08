@@ -40,7 +40,7 @@ def make_job(tmp_path, run_at=None, dry_run=False):
         s.add(acc)
         s.add(post)
         s.commit()
-        job = Job(post_id=post.id, account_id=acc.id, run_at=run_at or utcnow(),
+        job = Job(post_id=post.id, account_id=acc.id, run_at=run_at or utcnow(), dry_run=dry_run,
                   text_json=PlatformText(description="hi").to_json())
         s.add(job)
         s.commit()

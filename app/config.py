@@ -16,6 +16,10 @@ DEBUG_DIR = DATA_DIR / "debug"
 DB_PATH = DATA_DIR / "app.db"
 PLATFORMS_FILE = BASE_DIR / "platforms.yaml"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+# Set a password before running on a server reachable by others (HTTP Basic auth, any user name).
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 
 
 def ensure_dirs() -> None:

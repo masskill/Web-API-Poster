@@ -5,18 +5,21 @@
 {% endif %}
 {% if not texts %}<p class="muted">{{ t("post.texts_hint") }}</p>{% endif %}
 {% for key, text in texts.items() %}{% set r = platforms[key] %}
-<div class="card">
+<div class="card" data-caption-max="{{ r.description_max }}">
   <h3>{{ r.name }}</h3>
   {% if r.has_title %}
     <label>{{ t("post.f_title") }} <span class="muted small">({{ t("post.limit", n=r.title_max) }})</span></label>
-    <input type="text" name="text_{{ key }}_title" value="{{ text.title }}">
+    <input type="text" name="text_{{ key }}_title" value="{{ text.title }}" data-max="{{ r.title_max }}">
+    <div class="small muted counter" data-for="title"></div>
   {% else %}
     <input type="hidden" name="text_{{ key }}_title" value="">
     <p class="muted small">{{ t("post.no_title_field") }}</p>
   {% endif %}
   <label>{{ t("post.f_description") }} <span class="muted small">({{ t("post.limit_caption", n=r.description_max) }})</span></label>
-  <textarea name="text_{{ key }}_description" rows="5">{{ text.description }}</textarea>
+  <textarea name="text_{{ key }}_description" rows="5" data-caption="description">{{ text.description }}</textarea>
+  <div class="small muted counter" data-for="caption"></div>
   <label>{{ t("post.f_hashtags") }} <span class="muted small">({{ t("post.tags_limit", n=r.hashtags_max) }})</span></label>
-  <input type="text" name="text_{{ key }}_hashtags" value="{{ text.hashtags|join(' ') }}">
+  <input type="text" name="text_{{ key }}_hashtags" value="{{ text.hashtags|join(' ') }}" data-caption="hashtags"
+         data-max-tags="{{ r.hashtags_max }}">
 </div>
 {% endfor %}

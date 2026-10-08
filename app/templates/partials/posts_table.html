@@ -20,7 +20,7 @@
     <tr>
       <td>{% if acc %}{{ platform_name(acc.platform) }} / {{ acc.name }}{% else %}—{% endif %}</td>
       <td><span class="badge {{ job.status }}">{{ t("status." ~ job.status) }}</span>
-        {% if job.error_code %}<div class="small {{ 'warn' if job.status in ('pending', 'needs_action') else 'error' }}">{{ t("err." ~ job.error_code) }}</div>{% endif %}
+        {% if job.error_code %}<div class="small {{ 'warn' if job.status in ('pending', 'needs_action', 'published') else 'error' }}">{{ t("err." ~ job.error_code) }}</div>{% endif %}
         {% if job.error %}<div class="small error">{{ job.error }}</div>{% endif %}</td>
       <td class="small">{{ fmt_dt(job.finished_at or job.started_at or job.run_at) }}</td>
       <td class="small">

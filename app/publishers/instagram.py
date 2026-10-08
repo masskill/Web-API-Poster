@@ -47,8 +47,7 @@ class InstagramPublisher(BrowserPublisher):
         await self.fill(page, SELECTORS["caption"], text.caption())
         if dry_run:
             return self.dry_run_result()
-        self.go("click Share")
-        await self.click(page, SELECTORS["share"])
+        await self.submit(page, SELECTORS["share"])
         self.go("wait until the reel is shared")
         await self.confirm(page, SELECTORS["shared"], self.upload_timeout(video))
         return PublishResult("published", url=None)

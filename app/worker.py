@@ -125,6 +125,8 @@ def daily_limit_wait(account_id: int) -> timedelta | None:
 def finish_job(job_id: int, result: PublishResult, debug_dir: str | None) -> None:
     with get_session() as s:
         job = s.get(Job, job_id)
+        if job is None:  # deleted while it was running
+            return
         if job.status != "cancelled":  # user cancelled while we waited: keep it
             job.status = result.status
         job.result_url = result.url
@@ -150,21 +152,28 @@ class Worker:
         self.loop = asyncio.get_running_loop()
         self._event = asyncio.Event()
         while True:
-            job_id = next_due_job_id()
-            if job_id is None:
-                try:
-                    await asyncio.wait_for(self._event.wait(), timeout=POLL_SECONDS)
-                except asyncio.TimeoutError:
-                    pass
-                self._event.clear()
-                continue
-            try:
-                await self.run_job(job_id)
+            try:  # nothing may stop this loop, or no publication would run until restart
+                await self._iteration()
             except Exception:
-                logger.exception("job %s crashed", job_id)
-                finish_job(job_id, PublishResult("failed", error_code="exception"), None)
-            if next_due_job_id() is not None:
-                await browser.human_pause("job")
+                logger.exception("worker iteration failed")
+                await asyncio.sleep(5)
+
+    async def _iteration(self) -> None:
+        job_id = next_due_job_id()
+        if job_id is None:
+            try:
+                await asyncio.wait_for(self._event.wait(), timeout=POLL_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+            self._event.clear()
+            return
+        try:
+            await self.run_job(job_id)
+        except Exception as e:
+            logger.exception("job %s crashed", job_id)
+            finish_job(job_id, PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception"), None)
+        if next_due_job_id() is not None:
+            await browser.human_pause("job")
 
     async def run_job(self, job_id: int) -> None:
         publishers = self.publishers or default_publishers()
@@ -173,6 +182,7 @@ class Worker:
             if not job or job.status != "pending":
                 return
             account, post = s.get(Account, job.account_id), s.get(Post, job.post_id)
+            dry_run = job.dry_run
             wait = daily_limit_wait(account.id)
             if wait is not None:
                 job.run_at = utcnow() + wait
@@ -186,7 +196,7 @@ class Worker:
             s.commit()
 
         log = JobLog(job_id)
-        log(f"start: {account.platform} / {account.name}, dry_run={post.dry_run}")
+        log(f"start: {account.platform} / {account.name}, dry_run={dry_run}")
         video = Path(post.video_path)
         text = PlatformText.from_json(job.text_json)
         debug_dir = None
@@ -196,9 +206,9 @@ class Worker:
                 raise FileNotFoundError(f"video not found: {video}")
             if publisher.uses_browser:
                 result, debug_dir = await self._browser_publish(job_id, publisher, account, video, text,
-                                                                post.dry_run, log)
+                                                                dry_run, log)
             else:
-                result = await publisher.publish(None, video, text, post.dry_run)
+                result = await publisher.publish(None, video, text, dry_run)
         except Exception as e:
             result = PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception")
         log(f"result: {result.status} {result.url or ''} {result.error or ''}".strip())
@@ -244,9 +254,11 @@ class Worker:
             except Exception as e:
                 log(f"error: {type(e).__name__}: {e}")
                 d = await browser.save_debug(job_id, log.lines, page)
+                error = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+                if getattr(publisher, "submitted", False):  # the final button was already pressed
+                    return PublishResult("published", error=error, error_code="unconfirmed"), d
                 code = "network" if "net::ERR_" in str(e) else "exception"
-                return PublishResult("failed", error=f"{type(e).__name__}: {str(e).splitlines()[0]}",
-                                     error_code=code), d
+                return PublishResult("failed", error=error, error_code=code), d
             finally:
                 try:
                     await ctx.close()

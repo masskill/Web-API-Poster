@@ -126,20 +126,26 @@ async def call_ai(provider: str, api_key: str, model: str, prompt: str,
                 },
             )
             r.raise_for_status()
-            return extract_json(r.json()["choices"][0]["message"]["content"])
+            choice = r.json()["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise ValueError("AI reply was cut off (too long); select fewer platforms or shorten the text")
+            return extract_json(choice["message"]["content"])
         if provider == "anthropic":
             r = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
                 json={
                     "model": model,
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                     "system": SYSTEM_PROMPT,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )
             r.raise_for_status()
-            text = "".join(b.get("text", "") for b in r.json()["content"] if b.get("type") == "text")
+            data = r.json()
+            if data.get("stop_reason") == "max_tokens":
+                raise ValueError("AI reply was cut off (too long); select fewer platforms or shorten the text")
+            text = "".join(b.get("text", "") for b in data["content"] if b.get("type") == "text")
             return extract_json(text)
         raise ValueError(f"unknown AI provider: {provider}")
     finally:

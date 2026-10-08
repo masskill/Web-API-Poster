@@ -54,7 +54,6 @@ class RumblePublisher(BrowserPublisher):
                 await box.check()
         if dry_run:
             return self.dry_run_result()
-        self.go("click Submit")
-        await self.click(page, SELECTORS["submit"])
+        await self.submit(page, SELECTORS["submit"])
         await self.confirm(page, SELECTORS["done"], self.step_timeout)
         return PublishResult("published", url=await self.href(page, SELECTORS["video_link"], "https://rumble.com", 5000))

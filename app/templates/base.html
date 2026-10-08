@@ -77,5 +77,29 @@
 <main>
 {% block content %}{% endblock %}
 </main>
+<script>
+// Live character counters for the per-platform texts (description + hashtags share one limit).
+function updateCounters(root) {
+  root.querySelectorAll(".card[data-caption-max]").forEach(card => {
+    const max = +card.dataset.captionMax;
+    const desc = card.querySelector('[data-caption="description"]');
+    const tagsInput = card.querySelector('[data-caption="hashtags"]');
+    if (!desc || !tagsInput) return;
+    const tags = tagsInput.value.split(/[\s,;]+/).filter(Boolean).map(t => "#" + t.replace(/^#+/, ""));
+    const len = desc.value.trim().length + (tags.length ? tags.join(" ").length + 2 : 0);
+    const caption = card.querySelector('.counter[data-for="caption"]');
+    caption.textContent = len + " / " + max + (tags.length > +tagsInput.dataset.maxTags ? " · #" + tags.length + " / " + tagsInput.dataset.maxTags : "");
+    caption.classList.toggle("error", len > max || tags.length > +tagsInput.dataset.maxTags);
+    const title = card.querySelector("[data-max]");
+    const titleCounter = card.querySelector('.counter[data-for="title"]');
+    if (title && titleCounter) {
+      titleCounter.textContent = title.value.length + " / " + title.dataset.max;
+      titleCounter.classList.toggle("error", title.value.length > +title.dataset.max);
+    }
+  });
+}
+document.addEventListener("input", () => updateCounters(document));
+document.addEventListener("htmx:afterSwap", () => updateCounters(document));
+</script>
 </body>
 </html>

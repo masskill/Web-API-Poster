@@ -67,8 +67,7 @@ class YouTubePublisher(BrowserPublisher):
         self.go("wait until upload finishes")
         if not await self._wait_upload(page, video):
             return PublishResult("failed", error_code="upload", error="upload did not finish in time", url=url)
-        self.go("click Publish")
-        await self.click(page, SELECTORS["done"])
+        await self.submit(page, SELECTORS["done"])
         if await self.confirm(page, SELECTORS["published_close"], self.step_timeout):
             await self.click(page, SELECTORS["published_close"])
         return PublishResult("published", url=url)

@@ -46,7 +46,6 @@ class BlueskyPublisher(BrowserPublisher):
             return PublishResult("failed", error_code="upload", error="Post button stayed disabled")
         if dry_run:
             return self.dry_run_result()
-        self.go("click Post")
-        await self.click(page, SELECTORS["post"])
-        await page.locator(SELECTORS["text"]).first.wait_for(state="hidden", timeout=self.upload_timeout(video))
+        await self.submit(page, SELECTORS["post"])
+        await self.confirm(page, SELECTORS["text"], self.upload_timeout(video), state="hidden")
         return PublishResult("published", url=None)

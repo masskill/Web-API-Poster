@@ -12,10 +12,11 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from app import browser, config, settings_store, worker
+from app import browser, config, posting, settings_store, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
 from app.models import Account, Category, Job, Post, utcnow
+from app.posting import local_tz
 from app.platforms import load_platforms, platform_name
 from app.texts import PlatformText, adapt_texts, fit_to_rules, parse_hashtags
 from app.video import check_video, probe
@@ -33,13 +34,6 @@ check_results: dict[int, str] = {}
 def get_lang(request: Request) -> str:
     lang = request.cookies.get("lang")
     return lang if lang in LANGS else DEFAULT_LANG
-
-
-def local_tz() -> ZoneInfo:
-    try:
-        return ZoneInfo(settings_store.get("timezone"))
-    except Exception:
-        return ZoneInfo("Europe/Kyiv")
 
 
 def fmt_dt(dt: datetime | None) -> str:
@@ -199,19 +193,10 @@ async def create_post(request: Request):
             run_at = local.replace(tzinfo=local_tz()).astimezone(timezone.utc)
         except ValueError:
             return RedirectResponse("/?error=post.err_date", status_code=303)
-    template = template_from_form(form)
-    platforms = load_platforms()
-    with get_session() as s:
-        post = Post(video_path=str(media_path(name)), title=template.title, description=template.description,
-                    hashtags=" ".join(template.hashtags), category=str(form.get("category", "")),
-                    scheduled_at=run_at if form.get("when") == "at" else None,
-                    dry_run=form.get("dry_run") == "1")
-        s.add(post)
-        s.commit()
-        for acc in accounts:
-            text = text_from_form(form, acc.platform) or fit_to_rules(template, platforms[acc.platform])
-            s.add(Job(post_id=post.id, account_id=acc.id, run_at=run_at, text_json=text.to_json()))
-        s.commit()
+    texts = {a.platform: text_from_form(form, a.platform) for a in accounts if text_from_form(form, a.platform)}
+    posting.create_post(media_path(name), template_from_form(form), accounts,
+                        run_at if form.get("when") == "at" else None, form.get("dry_run") == "1",
+                        category=str(form.get("category", "")), texts=texts)
     request.app.state.scheduler.schedule(run_at)
     return RedirectResponse("/posts?created=1", status_code=303)
 
