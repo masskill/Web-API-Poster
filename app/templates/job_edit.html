@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+{% set r = platforms[account.platform] %}
+<h1>{{ t("job.title") }}</h1>
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+<form method="post" action="/jobs/{{ job.id }}/edit">
+  <section>
+    <h2>{{ platform_name(account.platform) }} / {{ account.name }}</h2>
+    <div class="card" data-caption-max="{{ r.description_max }}">
+      {% if r.has_title %}
+        <label>{{ t("post.f_title") }} <span class="muted small">({{ t("post.limit", n=r.title_max) }})</span></label>
+        <input type="text" name="title" value="{{ text.title }}" data-max="{{ r.title_max }}">
+        <div class="small muted counter" data-for="title"></div>
+      {% else %}
+        <input type="hidden" name="title" value="">
+        <p class="muted small">{{ t("post.no_title_field") }}</p>
+      {% endif %}
+      <label>{{ t("post.f_description") }} <span class="muted small">({{ t("post.limit_caption", n=r.description_max) }})</span></label>
+      <textarea name="description" rows="8" data-caption="description">{{ text.description }}</textarea>
+      <div class="small muted counter" data-for="caption"></div>
+      <label>{{ t("post.f_hashtags") }} <span class="muted small">({{ t("post.tags_limit", n=r.hashtags_max) }})</span></label>
+      <input type="text" name="hashtags" value="{{ text.hashtags|join(' ') }}" data-caption="hashtags" data-max-tags="{{ r.hashtags_max }}">
+    </div>
+    <label>{{ t("job.run_at") }}</label>
+    <input type="datetime-local" name="run_at" value="{{ run_at_local }}" required>
+    <p class="muted small">{{ t("post.tz_note", tz=timezone) }}</p>
+  </section>
+  <div class="actions">
+    <button type="submit">{{ t("common.save") }}</button>
+    <a class="btn secondary" href="/posts">{{ t("common.back") }}</a>
+  </div>
+</form>
+<script>updateCounters(document);</script>
+{% endblock %}

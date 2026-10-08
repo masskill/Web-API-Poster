@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ platform_name(account.platform) }} / {{ account.name }}</h1>
+<form method="post" action="/accounts/{{ account.id }}/edit">
+  <section>
+    <label>{{ t("acc.name") }}</label>
+    <input type="text" name="name" value="{{ account.name }}" required>
+    <label>{{ t("acc.signature") }}</label>
+    <textarea name="signature" rows="3" placeholder="{{ t('acc.signature_placeholder') }}">{{ account.signature }}</textarea>
+    <p class="muted small">{{ t("acc.signature_hint") }}</p>
+    {% if account.platform == "telegram" %}
+      <label>{{ t("acc.bot_token") }} <span class="muted small">({{ t("set.key_saved", mask=mask(account.cfg.get("bot_token"))) }})</span></label>
+      <input type="password" name="bot_token" placeholder="{{ t('set.key_keep') }}" autocomplete="off">
+      <label>{{ t("acc.chat_id") }}</label>
+      <input type="text" name="chat_id" value="{{ account.cfg.get('chat_id', '') }}">
+    {% endif %}
+    <p class="muted small">{{ t("acc.profile_folder") }}: <code>{{ account.platform }}/{{ account.slug }}</code></p>
+  </section>
+  <div class="actions">
+    <button type="submit">{{ t("common.save") }}</button>
+    <a class="btn secondary" href="/accounts">{{ t("common.back") }}</a>
+  </div>
+</form>
+{% endblock %}

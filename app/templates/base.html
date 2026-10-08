@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="{{ lang }}"{% if theme != "auto" %} data-theme="{{ theme }}"{% endif %}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ t("app.name") }}{% endblock %}</title>
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+<style>
+  :root { color-scheme:light;
+          --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e3e6eb;
+          --accent:#2563eb; --accent-btn:#2563eb; --on-accent:#fff; --ok:#15803d; --warn:#b45309; --err:#b91c1c;
+          --input-bg:#fff; --badge-bg:#eef0f3; --ok-bg:#f0fdf4; --warn-bg:#fffbeb; --err-bg:#fef2f2;
+          --info-bg:#dbeafe; --code-bg:#f3f4f6; }
+  /* Dark theme: follows the system unless the user picked light / dark in the header. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme:dark;
+          --bg:#0f1115; --card:#181b21; --text:#e6e8eb; --muted:#9aa3ae; --line:#2a2f37;
+          --accent:#6ea0ff; --accent-btn:#2563eb; --on-accent:#fff; --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+          --input-bg:#11141a; --badge-bg:#262b33; --ok-bg:rgba(74,222,128,.12); --warn-bg:rgba(251,191,36,.12);
+          --err-bg:rgba(248,113,113,.12); --info-bg:rgba(110,160,255,.16); --code-bg:#11141a; }
+  }
+  :root[data-theme="dark"] { color-scheme:dark;
+          --bg:#0f1115; --card:#181b21; --text:#e6e8eb; --muted:#9aa3ae; --line:#2a2f37;
+          --accent:#6ea0ff; --accent-btn:#2563eb; --on-accent:#fff; --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+          --input-bg:#11141a; --badge-bg:#262b33; --ok-bg:rgba(74,222,128,.12); --warn-bg:rgba(251,191,36,.12);
+          --err-bg:rgba(248,113,113,.12); --info-bg:rgba(110,160,255,.16); --code-bg:#11141a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:10px 16px;
+           display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+  header .brand { font-weight:700; }
+  header nav { display:flex; gap:14px; flex-wrap:wrap; flex:1; }
+  header a { color:var(--text); text-decoration:none; }
+  header a.active { color:var(--accent); font-weight:600; }
+  .lang a { padding:2px 6px; border-radius:4px; }
+  .lang a.active { background:var(--accent-btn); color:var(--on-accent); }
+  .theme-toggle { display:inline-flex; padding:2px 4px; }
+  main { max-width:1000px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 16px; }
+  h2 { font-size:17px; margin:0 0 10px; }
+  h3 { font-size:15px; margin:0 0 8px; }
+  section, .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px; }
+  label { display:block; margin:8px 0 4px; font-weight:500; }
+  input[type=text], input[type=password], input[type=number], input[type=datetime-local], select, textarea {
+    width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font:inherit; background:var(--input-bg); color:var(--text); }
+  textarea { resize:vertical; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:180px; }
+  button, .btn { padding:6px 12px; border:1px solid var(--accent-btn); background:var(--accent-btn); color:var(--on-accent);
+                 border-radius:6px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.secondary, .btn.secondary { background:var(--input-bg); color:var(--accent); border-color:var(--accent); }
+  button.danger { background:var(--input-bg); color:var(--err); border-color:var(--err); }
+  button:disabled { opacity:.5; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .table-wrap { overflow-x:auto; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+  .ok { color:var(--ok); }
+  .warn { color:var(--warn); }
+  .error { color:var(--err); }
+  .alert { padding:10px 12px; border-radius:6px; margin-bottom:14px; border:1px solid; }
+  .alert.error { background:var(--err-bg); }
+  .alert.warn { background:var(--warn-bg); }
+  .alert.ok { background:var(--ok-bg); }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:13px; background:var(--badge-bg); }
+  .badge.ok, .badge.published, .badge.dry_run { background:var(--ok-bg); color:var(--ok); }
+  .badge.warn, .badge.needs_action, .badge.pending { background:var(--warn-bg); color:var(--warn); }
+  .badge.failed { background:var(--err-bg); color:var(--err); }
+  .badge.running { background:var(--info-bg); color:var(--accent); }
+  a { color:var(--accent); }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .checks label { display:inline-flex; gap:6px; align-items:center; font-weight:400; margin:4px 14px 4px 0; }
+  .htmx-indicator { display:none; }
+  .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display:inline; }
+  pre { white-space:pre-wrap; word-break:break-word; background:var(--code-bg); padding:8px; border-radius:6px; font-size:12px; }
+  code { word-break:break-all; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">{{ t("app.name") }}</span>
+  <nav>
+    {% set path = request.url.path %}
+    <a href="/" class="{{ 'active' if path == '/' }}">{{ t("nav.new_post") }}</a>
+    <a href="/posts" class="{{ 'active' if path.startswith('/posts') }}">{{ t("nav.posts") }}</a>
+    <a href="/schedule" class="{{ 'active' if path.startswith('/schedule') }}">{{ t("nav.schedule") }}</a>
+    <a href="/accounts" class="{{ 'active' if path.startswith('/accounts') }}">{{ t("nav.accounts") }}</a>
+    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">{{ t("nav.settings") }}</a>
+  </nav>
+  {% set next_theme = {"auto": "dark", "dark": "light", "light": "auto"}[theme] %}
+  <a href="/theme/{{ next_theme }}" class="theme-toggle" title="{{ t('theme.' ~ theme) }}" aria-label="{{ t('theme.' ~ theme) }}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      {% if theme == "dark" %}<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+      {% elif theme == "light" %}<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      {% else %}<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>{% endif %}
+    </svg></a>
+  <span class="lang">
+    <a href="/lang/uk" class="{{ 'active' if lang == 'uk' }}">UK</a>
+    <a href="/lang/ru" class="{{ 'active' if lang == 'ru' }}">RU</a>
+  </span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<script>
+// Live character counters for the per-platform texts (description + hashtags share one limit).
+function updateCounters(root) {
+  root.querySelectorAll(".card[data-caption-max]").forEach(card => {
+    const max = +card.dataset.captionMax;
+    const desc = card.querySelector('[data-caption="description"]');
+    const tagsInput = card.querySelector('[data-caption="hashtags"]');
+    if (!desc || !tagsInput) return;
+    const tags = tagsInput.value.split(/[\s,;]+/).filter(Boolean).map(t => "#" + t.replace(/^#+/, ""));
+    const len = desc.value.trim().length + (tags.length ? tags.join(" ").length + 2 : 0);
+    const caption = card.querySelector('.counter[data-for="caption"]');
+    caption.textContent = len + " / " + max + (tags.length > +tagsInput.dataset.maxTags ? " · #" + tags.length + " / " + tagsInput.dataset.maxTags : "");
+    caption.classList.toggle("error", len > max || tags.length > +tagsInput.dataset.maxTags);
+    const title = card.querySelector("[data-max]");
+    const titleCounter = card.querySelector('.counter[data-for="title"]');
+    if (title && titleCounter) {
+      titleCounter.textContent = title.value.length + " / " + title.dataset.max;
+      titleCounter.classList.toggle("error", title.value.length > +title.dataset.max);
+    }
+  });
+}
+document.addEventListener("input", () => updateCounters(document));
+document.addEventListener("htmx:afterSwap", () => updateCounters(document));
+</script>
+</body>
+</html>

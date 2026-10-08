@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("posts.title") }}</h1>
+{% if created %}<div class="alert ok">{{ t("posts.created") }}</div>{% endif %}
+{% include "partials/posts_table.html" %}
+{% endblock %}

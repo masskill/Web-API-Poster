@@ -1,0 +1,440 @@
+"""Sequential job queue: one job (account x video) at a time, plus login / login-check actions."""
+import asyncio
+import logging
+import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from sqlmodel import func, select
+
+from app import browser, config, settings_store
+from app.db import get_session
+from app.i18n import translate
+from app.models import Account, Job, Post, utcnow
+from app.notify import message, notify
+from app.platforms import platform_name
+from app.posting import local_tz
+from app.publishers.base import NeedsUserAction, PublishResult
+from app.texts import PlatformText
+
+logger = logging.getLogger("poster.worker")
+
+POLL_SECONDS = 30
+MAX_USER_ROUNDS = 3
+# Errors that may pass by themselves; others (login, captcha, file too large...) need a person.
+RETRY_CODES = {"network", "upload", "selector", "exception"}
+
+# Login button state per account id: queued | waiting | ok | timeout | error
+login_state: dict[int, str] = {}
+
+
+def default_publishers() -> dict:
+    from app.publishers import PUBLISHERS
+    return PUBLISHERS
+
+
+class JobLog:
+    """Step log of a job: kept in memory for debug files and appended to Job.log for the UI."""
+
+    def __init__(self, job_id: int | None):
+        self.job_id = job_id
+        self.lines: list[str] = []
+
+    def __call__(self, msg: str) -> None:
+        line = f"[{utcnow():%H:%M:%S}] {msg}"
+        self.lines.append(line)
+        if self.job_id is None:
+            return
+        with get_session() as s:
+            job = s.get(Job, self.job_id)
+            if job:
+                job.log = (job.log + "\n" + line).strip()
+                s.add(job)
+                s.commit()
+
+
+# ---- queue state helpers (also used by the web UI) ----
+
+def next_due_job_id() -> int | None:
+    with get_session() as s:
+        return s.exec(
+            select(Job.id).where(Job.status == "pending", Job.run_at <= utcnow())
+            .order_by(Job.run_at, Job.id)
+        ).first()
+
+
+def job_status(job_id: int) -> str | None:
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        return job.status if job else None
+
+
+def set_status(job_id: int, status: str, error_code: str | None = None) -> None:
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if job:
+            job.status, job.error_code = status, error_code
+            s.add(job)
+            s.commit()
+
+
+def retry_job(job_id: int) -> bool:
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status not in ("failed", "cancelled", "dry_run"):
+            return False
+        job.status, job.run_at, job.attempts = "pending", utcnow(), 0
+        job.error = job.error_code = job.debug_dir = job.result_url = None
+        s.add(job)
+        s.commit()
+    return True
+
+
+def publish_for_real(job_id: int) -> bool:
+    """After a successful dry-run: run the same job again, this time pressing the final button."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status != "dry_run":
+            return False
+        job.dry_run, job.status, job.run_at, job.attempts = False, "pending", utcnow(), 0
+        job.error = job.error_code = job.debug_dir = job.result_url = None
+        s.add(job)
+        s.commit()
+    return True
+
+
+def update_job(job_id: int, text: PlatformText, run_at: datetime) -> bool:
+    """Edit text and time of a job that has not been published yet (it is queued again)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status not in ("pending", "failed", "cancelled"):
+            return False
+        job.text_json, job.run_at, job.status, job.attempts = text.to_json(), run_at, "pending", 0
+        job.error = job.error_code = None
+        s.add(job)
+        s.commit()
+    return True
+
+
+def delete_post(post_id: int) -> bool:
+    """Delete a publication with its jobs, debug files and video (if no other publication uses it)."""
+    with get_session() as s:
+        post = s.get(Post, post_id)
+        if not post:
+            return False
+        jobs = s.exec(select(Job).where(Job.post_id == post_id)).all()
+        if any(j.status in ("running", "needs_action") for j in jobs):
+            return False
+        for job in jobs:
+            shutil.rmtree(config.DEBUG_DIR / str(job.id), ignore_errors=True)
+            s.delete(job)
+        video = Path(post.video_path)
+        s.delete(post)
+        s.commit()
+        still_used = s.exec(select(Post).where(Post.video_path == str(video))).first()
+    if not still_used and video.parent == config.MEDIA_DIR:
+        video.unlink(missing_ok=True)
+    return True
+
+
+def cancel_job(job_id: int) -> bool:
+    """Cancel a job; a running one is stopped by the worker (see Worker.abort)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if not job or job.status not in ("pending", "needs_action", "failed", "running"):
+            return False
+        job.status, job.finished_at = "cancelled", utcnow()
+        s.add(job)
+        s.commit()
+    return True
+
+
+def interrupt_stale_jobs() -> int:
+    """After a restart, jobs left 'running' may or may not be published: mark them failed for manual retry."""
+    with get_session() as s:
+        jobs = s.exec(select(Job).where(Job.status.in_(["running", "needs_action"]))).all()
+        for job in jobs:
+            job.status, job.error_code, job.finished_at = "failed", "interrupted", utcnow()
+            s.add(job)
+        s.commit()
+        return len(jobs)
+
+
+def daily_limit_wait(account_id: int) -> timedelta | None:
+    """None if the account may publish now, else how long until a slot frees up (rolling 24 h)."""
+    limit = settings_store.get_int("daily_limit")
+    if limit <= 0:
+        return None
+    since = utcnow() - timedelta(hours=24)
+    with get_session() as s:
+        count, oldest = s.exec(
+            select(func.count(Job.id), func.min(Job.finished_at))
+            .where(Job.account_id == account_id, Job.status == "published", Job.finished_at >= since)
+        ).one()
+    if count < limit:
+        return None
+    return oldest + timedelta(hours=24) - utcnow()
+
+
+def retry_delay(attempts: int) -> timedelta | None:
+    """Delay before the next automatic retry, or None when retries are used up."""
+    if attempts > settings_store.get_int("auto_retry"):
+        return None
+    minutes = [float(m) for m in settings_store.get("auto_retry_minutes").replace(";", ",").split(",")
+               if m.strip().replace(".", "", 1).isdigit()] or [10.0]
+    return timedelta(minutes=minutes[min(attempts, len(minutes)) - 1])
+
+
+def finish_job(job_id: int, result: PublishResult, debug_dir: str | None) -> None:
+    with get_session() as s:
+        job = s.get(Job, job_id)
+        if job is None:  # deleted while it was running
+            return
+        # A job cancelled while it ran stays cancelled, unless the post really went out.
+        if job.status != "cancelled" or result.status == "published":
+            job.status = result.status
+        job.result_url = result.url
+        job.error_code, job.error = result.error_code, result.error
+        job.debug_dir = debug_dir or job.debug_dir
+        job.finished_at = utcnow()
+        delay = retry_delay(job.attempts) if job.status == "failed" and job.error_code in RETRY_CODES else None
+        if delay is not None:  # transient error: queue again automatically
+            job.status, job.run_at = "pending", utcnow() + delay
+        s.add(job)
+        s.commit()
+
+
+async def notify_job(job_id: int, account: Account, title: str) -> None:
+    """Tell the owner how the job ended (if notifications are configured)."""
+    with get_session() as s:
+        job = s.get(Job, job_id)
+    if job is None:
+        return
+    who = f"{platform_name(account.platform)} / {account.name}: «{title or '—'}»"
+    lang = settings_store.get("notify_lang") or "uk"
+    error = (translate(lang, f"err.{job.error_code}") if job.error_code else "") + (f"\n{job.error}" if job.error else "")
+    success = settings_store.get_bool("notify_success")
+    if job.status == "published" and job.error_code == "unconfirmed":
+        text = message("notify.unconfirmed", who=who)
+    elif job.status == "published" and success:
+        text = message("notify.published", who=who, url=job.result_url or "")
+    elif job.status == "dry_run" and success:
+        text = message("notify.dry_run", who=who)
+    elif job.status == "pending" and job.error_code in RETRY_CODES:
+        text = message("notify.retry", who=who, error=error,
+                       time=job.run_at.astimezone(local_tz()).strftime("%d.%m %H:%M"))
+    elif job.status == "failed":
+        text = message("notify.failed", who=who, error=error, debug=job.debug_dir or "")
+    else:
+        return
+    await notify(text)
+
+
+class Worker:
+    def __init__(self, publishers: dict | None = None):
+        self.publishers = publishers
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self._event: asyncio.Event | None = None
+        self.current_job_id: int | None = None
+        self._ctx = None  # browser context of the running job
+
+    def abort(self, job_id: int) -> None:
+        """Thread-safe: stop the running job by closing its browser."""
+        if self.loop and self._ctx is not None and self.current_job_id == job_id:
+            asyncio.run_coroutine_threadsafe(self._ctx.close(), self.loop)
+
+    def wake(self) -> None:
+        """Thread-safe: called by the scheduler and the web UI."""
+        if self.loop and self._event:
+            self.loop.call_soon_threadsafe(self._event.set)
+
+    async def run_forever(self) -> None:
+        self.loop = asyncio.get_running_loop()
+        self._event = asyncio.Event()
+        while True:
+            try:  # nothing may stop this loop, or no publication would run until restart
+                await self._iteration()
+            except Exception:
+                logger.exception("worker iteration failed")
+                await asyncio.sleep(5)
+
+    async def _iteration(self) -> None:
+        job_id = next_due_job_id()
+        if job_id is None:
+            try:
+                await asyncio.wait_for(self._event.wait(), timeout=POLL_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+            self._event.clear()
+            return
+        try:
+            self.current_job_id = job_id
+            await self.run_job(job_id)
+        except Exception as e:
+            logger.exception("job %s crashed", job_id)
+            finish_job(job_id, PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception"), None)
+        finally:
+            self.current_job_id = None
+        if next_due_job_id() is not None:
+            await browser.human_pause("job")
+
+    async def run_job(self, job_id: int) -> None:
+        publishers = self.publishers or default_publishers()
+        with get_session() as s:
+            job = s.get(Job, job_id)
+            if not job or job.status != "pending":
+                return
+            account, post = s.get(Account, job.account_id), s.get(Post, job.post_id)
+            dry_run = job.dry_run
+            wait = daily_limit_wait(account.id)
+            if wait is not None:
+                job.run_at = utcnow() + wait
+                job.error_code = "daily_limit"
+                s.add(job)
+                s.commit()
+                return
+            job.status, job.started_at, job.attempts = "running", utcnow(), job.attempts + 1
+            job.error = job.error_code = None
+            s.add(job)
+            s.commit()
+
+        log = JobLog(job_id)
+        log(f"start: {account.platform} / {account.name}, dry_run={dry_run}")
+        video = Path(post.video_path)
+        text = PlatformText.from_json(job.text_json)
+        debug_dir = None
+        try:
+            publisher = publishers[account.platform](account, log)
+            if not video.exists():
+                raise FileNotFoundError(f"video not found: {video}")
+            if publisher.uses_browser:
+                result, debug_dir = await self._browser_publish(job_id, publisher, account, video, text,
+                                                                dry_run, log)
+            else:
+                result = await publisher.publish(None, video, text, dry_run)
+        except Exception as e:
+            result = PublishResult("failed", error=f"{type(e).__name__}: {e}", error_code="exception")
+        log(f"result: {result.status} {result.url or ''} {result.error or ''}".strip())
+        if result.status == "failed" and debug_dir is None:
+            debug_dir = await browser.save_debug(job_id, log.lines)
+        finish_job(job_id, result, debug_dir)
+        await notify_job(job_id, account, post.title)
+
+    async def _browser_publish(self, job_id, publisher, account, video, text, dry_run, log):
+        from playwright.async_api import async_playwright
+
+        headless = settings_store.get_bool("headless")
+        async with browser.BROWSER_LOCK, async_playwright() as pw:
+            ctx = self._ctx = await browser.open_context(pw, account, headless, log)
+            page = await browser.first_page(ctx)
+            try:
+                for _ in range(MAX_USER_ROUNDS):
+                    try:
+                        result = await publisher.publish(page, video, text, dry_run)
+                    except NeedsUserAction as e:
+                        log(f"user action needed: {e.code}")
+                        if headless:
+                            d = await browser.save_debug(job_id, log.lines, page)
+                            return PublishResult("failed", error_code=f"{e.code}_headless"), d
+                        set_status(job_id, "needs_action", e.code)
+                        await notify(message("notify.needs_action", reason=translate(
+                            settings_store.get("notify_lang") or "uk", f"err.{e.code}"),
+                            who=f"{platform_name(account.platform)} / {account.name}"))
+                        check = e.check or (lambda: publisher.is_logged_in(page))
+                        ok = await browser.wait_until(
+                            check, settings_store.get_float("user_wait_minutes"),
+                            should_abort=lambda: page.is_closed() or job_status(job_id) == "cancelled",
+                        )
+                        if not ok:
+                            d = await browser.save_debug(job_id, log.lines, page)
+                            return PublishResult("failed", error_code="user_timeout"), d
+                        await browser.save_session(ctx, account)
+                        set_status(job_id, "running")
+                        log("resolved by user, starting again")
+                        continue
+                    if result.status == "failed":
+                        return result, await browser.save_debug(job_id, log.lines, page)
+                    await browser.save_session(ctx, account)  # keep the session file fresh
+                    return result, None
+                d = await browser.save_debug(job_id, log.lines, page)
+                return PublishResult("failed", error_code="user_timeout"), d
+            except Exception as e:
+                log(f"error: {type(e).__name__}: {e}")
+                d = await browser.save_debug(job_id, log.lines, page)
+                error = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+                if getattr(publisher, "submitted", False):  # the final button was already pressed
+                    return PublishResult("published", error=error, error_code="unconfirmed"), d
+                code = "network" if "net::ERR_" in str(e) else "exception"
+                return PublishResult("failed", error=error, error_code=code), d
+            finally:
+                self._ctx = None
+                try:
+                    await ctx.close()
+                except Exception:
+                    pass
+
+
+# ---- account login actions (run in the browser thread) ----
+
+def _load_account(account_id: int) -> Account:
+    with get_session() as s:
+        return s.get(Account, account_id)
+
+
+async def login_account(account_id: int, publishers: dict | None = None) -> str:
+    """Open a visible browser on the platform login page and wait until the user logs in.
+    On success the session file with the platform keys is saved."""
+    from playwright.async_api import async_playwright
+
+    publishers = publishers or default_publishers()
+    login_state[account_id] = "queued"
+    try:
+        async with browser.BROWSER_LOCK, async_playwright() as pw:
+            account = _load_account(account_id)
+            publisher = publishers[account.platform](account, lambda m: None)
+            login_state[account_id] = "waiting"
+            ctx = await browser.open_context(pw, account, headless=False)
+            try:
+                page = await browser.first_page(ctx)
+                await page.goto(publisher.login_url)
+                ok = await browser.wait_until(lambda: publisher.is_logged_in(page),
+                                              settings_store.get_float("user_wait_minutes"),
+                                              should_abort=page.is_closed)
+                if ok:
+                    await asyncio.sleep(3)  # let redirects finish and cookies settle
+                    await browser.save_session(ctx, account)
+                login_state[account_id] = "ok" if ok else "timeout"
+            finally:
+                try:
+                    await ctx.close()
+                except Exception:
+                    pass
+    except Exception:
+        login_state[account_id] = "error"
+    return login_state[account_id]
+
+
+async def check_login(account_id: int, publishers: dict | None = None, headless: bool | None = None) -> bool:
+    from playwright.async_api import async_playwright
+
+    publishers = publishers or default_publishers()
+    account = _load_account(account_id)
+    publisher = publishers[account.platform](account, lambda m: None)
+    if not publisher.uses_browser:
+        ok = await publisher.is_logged_in(None)
+        browser.mark_logged_in(account_id, ok)
+        return ok
+    async with browser.BROWSER_LOCK, async_playwright() as pw:
+        ctx = await browser.open_context(pw, account, settings_store.get_bool("headless") if headless is None else headless)
+        try:
+            page = await browser.first_page(ctx)
+            await page.goto(publisher.check_url)
+            await page.wait_for_timeout(2000)
+            ok = await publisher.is_logged_in(page)
+            if ok:
+                await browser.save_session(ctx, account)
+            else:
+                browser.mark_logged_in(account_id, False)
+            return ok
+        finally:
+            await ctx.close()
