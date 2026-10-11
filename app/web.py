@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from sqlmodel import select
 
-from app import assistant, automation, browser, config, posting, settings_store, videogen, worker
+from app import assistant, automation, browser, config, docs, posting, settings_store, videogen, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
 from app.models import Account, AccountGroup, Category, Generation, Job, Post, utcnow
@@ -48,9 +48,11 @@ THEMES = ("auto", "dark", "light")
 def render(request: Request, template: str, status_code: int = 200, **ctx) -> HTMLResponse:
     lang = get_lang(request)
     theme = request.cookies.get("theme")
+    ctx.setdefault("has_update", request.cookies.get("seen_version") != config.APP_VERSION)
     ctx.update(
         lang=lang,
         theme=theme if theme in THEMES else "auto",
+        app_version=config.APP_VERSION,
         t=lambda key, **kw: translate(lang, key, **kw),
         platforms=load_platforms(),
         platform_name=platform_name,
@@ -131,6 +133,22 @@ def set_theme(mode: str, request: Request):
     resp = RedirectResponse(request.headers.get("referer") or "/", status_code=303)
     if mode in THEMES:
         resp.set_cookie("theme", mode, max_age=3600 * 24 * 365)
+    return resp
+
+
+# ---- instruction and changelog (docs/*.md) ----
+
+@router.get("/guide", response_class=HTMLResponse)
+def guide_page(request: Request):
+    body, contents = docs.render_markdown(docs.load_doc("guide", get_lang(request)))
+    return render(request, "doc.html", body=body, contents=contents, page="guide")
+
+
+@router.get("/updates", response_class=HTMLResponse)
+def updates_page(request: Request):
+    body, _ = docs.render_markdown(docs.load_doc("updates", get_lang(request)))
+    resp = render(request, "doc.html", body=body, contents=[], page="updates", has_update=False)
+    resp.set_cookie("seen_version", config.APP_VERSION, max_age=3600 * 24 * 365 * 5)
     return resp
 
 

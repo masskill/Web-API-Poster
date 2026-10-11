@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% if contents %}
+  <nav class="card doc-toc">
+    <b>{{ t("docs.contents") }}</b>
+    <ul>{% for anchor, title in contents %}<li><a href="#{{ anchor }}">{{ title }}</a></li>{% endfor %}</ul>
+  </nav>
+{% endif %}
+<article class="card doc">{{ body }}</article>
+{% endblock %}

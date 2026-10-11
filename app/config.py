@@ -19,6 +19,10 @@ DB_PATH = DATA_DIR / "app.db"
 PLATFORMS_FILE = BASE_DIR / "platforms.yaml"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+DOCS_DIR = BASE_DIR / "docs"
+
+# Keep in sync with the top entry of docs/CHANGELOG.md (a test checks it).
+APP_VERSION = "1.6.0"
 
 # Set a password before running on a server reachable by others (HTTP Basic auth, any user name).
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
