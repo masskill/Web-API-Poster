@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
+{% if page == "updates" and new_version %}
+  <div class="alert ok">{{ t("upd.available", version=new_version) }}
+    <a class="btn" href="{{ download_url }}" style="margin-left:6px">{{ t("upd.download") }}</a>
+    <div class="small" style="margin-top:6px">{{ t("upd.steps") }}</div>
+  </div>
+{% endif %}
 {% if contents %}
   <nav class="card doc-toc">
     <b>{{ t("docs.contents") }}</b>

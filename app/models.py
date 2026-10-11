@@ -40,6 +40,7 @@ class Post(SQLModel, table=True):
     scheduled_at: datetime | None = None
     dry_run: bool = True
     group_id: int | None = None
+    thumbnail_path: str = ""  # cover image (YouTube)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -98,6 +99,27 @@ class Generation(SQLModel, table=True):
     error: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     finished_at: datetime | None = None
+
+
+class Mix(SQLModel, table=True):
+    """Mix studio: a short clip looped under audio tracks joined into one mix."""
+    id: int | None = Field(default=None, primary_key=True)
+    title: str = ""
+    clip_path: str  # files of a mix live in data/mixes/<folder>/
+    tracks: str = "[]"  # JSON list of {"path", "name", "duration"}
+    crossfade: float = 0  # seconds of smooth transition between tracks
+    tracklist: str = ""  # "00:00 Artist - Track" lines for the description
+    # queued | running | done | failed | cancelled
+    status: str = Field(default="queued", index=True)
+    progress: int = 0  # percent
+    video_path: str | None = None
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    finished_at: datetime | None = None
+
+    @property
+    def track_list(self) -> list[dict]:
+        return json.loads(self.tracks or "[]")
 
 
 class AssistantAction(SQLModel, table=True):

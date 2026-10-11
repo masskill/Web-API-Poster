@@ -20,6 +20,7 @@ SELECTORS = {
     "file_input": "input[type='file']",
     "title": "#title-textarea #textbox",
     "description": "#description-textarea #textbox",
+    "thumbnail_input": "input[type='file'][accept*='image']",  # hidden input of "Upload thumbnail"; verify
     "not_for_kids": "tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_NOT_MFK']",
     "next": "#next-button",
     "public": "tp-yt-paper-radio-button[name='PUBLIC']",
@@ -49,6 +50,8 @@ class YouTubePublisher(BrowserPublisher):
         await self.fill(page, SELECTORS["title"], text.title.translate(FORBIDDEN_CHARS))
         self.go("fill description")
         await self.fill(page, SELECTORS["description"], text.caption().translate(FORBIDDEN_CHARS))
+        if self.thumbnail and self.thumbnail.exists():
+            await self._set_thumbnail(page)
 
         self.go("audience: not made for kids")
         await self.click(page, SELECTORS["not_for_kids"])
@@ -71,6 +74,15 @@ class YouTubePublisher(BrowserPublisher):
         if await self.confirm(page, SELECTORS["published_close"], self.step_timeout):
             await self.click(page, SELECTORS["published_close"])
         return PublishResult("published", url=url)
+
+    async def _set_thumbnail(self, page) -> None:
+        """A custom cover needs a verified channel; without it the video simply keeps the automatic cover."""
+        self.go("upload thumbnail")
+        try:
+            await page.locator(SELECTORS["thumbnail_input"]).first.set_input_files(str(self.thumbnail), timeout=15_000)
+            await page.wait_for_timeout(3000)
+        except Exception as e:
+            self.log(f"thumbnail not set (is the channel verified?): {str(e).splitlines()[0]}")
 
     async def _wait_upload(self, page, video: Path) -> bool:
         """While uploading, the progress label contains a percentage (in any UI language)."""

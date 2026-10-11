@@ -24,6 +24,7 @@
       {% else %}
         {{ t("acc.session_file") }}:
         {% if session_exists[a.id] %}<code>sessions/{{ a.platform }}/{{ a.slug }}.json</code>{% else %}—{% endif %}
+        {% if a.cfg.get("proxy") %}<br>{{ t("acc.proxy_short") }}: <code>{{ proxy_label(a.cfg.get("proxy")) }}</code>{% endif %}
       {% endif %}
     </td>
     <td><div class="actions">

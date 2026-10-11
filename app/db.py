@@ -1,4 +1,6 @@
 """SQLite engine and session helper."""
+import sqlite3
+
 from sqlalchemy import inspect, text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -48,3 +50,16 @@ def add_missing_columns() -> None:
 
 def get_session() -> Session:
     return Session(engine, expire_on_commit=False)
+
+
+def snapshot() -> bytes:
+    """A consistent copy of the whole database while the app keeps working (SQLite backup API)."""
+    raw = engine.raw_connection()
+    try:
+        copy = sqlite3.connect(":memory:")
+        raw.driver_connection.backup(copy)
+        data = copy.serialize()
+        copy.close()
+        return data
+    finally:
+        raw.close()

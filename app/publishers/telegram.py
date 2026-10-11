@@ -3,17 +3,21 @@
 Account keys: bot_token and chat_id (@channel_username or -100... id).
 The bot must be an admin of the channel with the right to post.
 """
+import asyncio
 from pathlib import Path
 
 import httpx
 
+from app import config
 from app.config import scrub
 from app.platforms import load_platforms
 from app.publishers.base import PublishResult
 from app.texts import PlatformText
+from app.video import probe, shrink, shrink_plan
 
 API_URL = "https://api.telegram.org/bot{token}/{method}"
 UPLOAD_TIMEOUT = 600  # seconds
+SHRINK_TARGET = 0.9  # aim at 90% of the limit: the encoder may overshoot a little
 
 
 class TelegramError(Exception):
@@ -66,11 +70,33 @@ class TelegramPublisher:
             self.log(f"check failed: {e}")
             return False
 
+    async def shrink(self, video: Path, limit: float, dry_run: bool) -> Path:
+        """The bot may send at most 50 MB: a bigger video gets a smaller copy in data/media (720p or lower)."""
+        duration = (await asyncio.to_thread(probe, video)).duration
+        if shrink_plan(duration, limit * SHRINK_TARGET) is None:
+            raise ValueError(f"the video is too long ({round(duration)} s) to fit into {limit} MB")
+        if dry_run:
+            self.log("dry-run: the video would be shrunk to fit the limit")
+            return video
+        dest = config.MEDIA_DIR / f"{video.stem}.tg.mp4"
+        if not dest.exists():  # made once, reused by a retry
+            self.log(f"shrinking the video to fit {limit} MB (this may take a few minutes)")
+            config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(shrink, video, dest, limit * SHRINK_TARGET)
+        size_mb = dest.stat().st_size / 1024 / 1024
+        if size_mb > limit:
+            raise ValueError(f"still {size_mb:.1f} MB after shrinking")
+        return dest
+
     async def publish(self, page, video: Path, text: PlatformText, dry_run: bool) -> PublishResult:
         limit = load_platforms()["telegram"]["video"]["max_size_mb"]
         size_mb = video.stat().st_size / 1024 / 1024
         if size_mb > limit:
-            return PublishResult("failed", error_code="file_too_large", error=f"{size_mb:.1f} MB > {limit} MB")
+            try:
+                video = await self.shrink(video, limit, dry_run)
+            except Exception as e:
+                return PublishResult("failed", error_code="file_too_large", error=f"{size_mb:.1f} MB > {limit} MB: {e}")
+            size_mb = video.stat().st_size / 1024 / 1024
         try:
             async with self._client(UPLOAD_TIMEOUT) as c:
                 me = await self._call(c, "getMe")

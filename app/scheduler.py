@@ -55,7 +55,8 @@ class Scheduler:
             self.wake()
         return len(future)
 
-    def start_automation(self, login_check, cleanup, inbox=None, video_poll=None) -> None:
+    def start_automation(self, login_check, cleanup, inbox=None, video_poll=None, update_check=None,
+                         bot_poll=None) -> None:
         """(Re)register the recurring automation tasks; called at startup and after settings change."""
         tz = local_tz()
         check_time = settings_store.get("login_check_time").strip()
@@ -72,4 +73,10 @@ class Scheduler:
                              max_instances=1, coalesce=True)
         if video_poll:
             self.aps.add_job(video_poll, "interval", seconds=10, id="video-poll", replace_existing=True,
+                             max_instances=1, coalesce=True)
+        if update_check:  # first check a minute after start, then twice a day
+            self.aps.add_job(update_check, "interval", hours=12, id="update-check", replace_existing=True,
+                             next_run_time=utcnow() + timedelta(minutes=1))
+        if bot_poll:
+            self.aps.add_job(bot_poll, "interval", seconds=5, id="bot-poll", replace_existing=True,
                              max_instances=1, coalesce=True)

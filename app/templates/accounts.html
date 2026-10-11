@@ -6,6 +6,12 @@
 
 <section>
   {% include "partials/accounts_table.html" %}
+  {% if accounts %}
+  <div class="actions" style="margin-top:10px; align-items:center">
+    <button class="secondary" hx-post="/accounts/test-all" hx-confirm="{{ t('acc.test_all_confirm') }}">{{ t("acc.test_all") }}</button>
+    <span class="muted small">{{ t("acc.test_all_hint") }}</span>
+  </div>
+  {% endif %}
 </section>
 
 <section>

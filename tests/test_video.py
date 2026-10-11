@@ -22,7 +22,7 @@ def test_vertical_short_video_fits_youtube_and_telegram():
 def test_limits_produce_warnings():
     info = VideoInfo(duration=200, width=1000, height=1000, size_mb=80, ext="avi")
     w = check_video(info, "telegram", load_platforms()["telegram"])
-    assert codes(w) == {"size", "format"}
+    assert codes(w) == {"size_shrink", "format"}  # Telegram: the poster shrinks a big video itself
     w = check_video(info, "x", load_platforms()["x"])
     assert codes(w) == {"duration", "format"}
     w = check_video(VideoInfo(10, 1920, 1080, 1, "mp4"), "tiktok", load_platforms()["tiktok"])

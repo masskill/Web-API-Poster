@@ -25,6 +25,7 @@ DEFAULTS = {
     "notify_chat_id": os.getenv("NOTIFY_CHAT_ID", ""),
     "notify_success": "1",  # also notify about successful publications
     "notify_lang": "uk",
+    "bot_control": "1",  # the same bot accepts videos and /status from the owner's chat (app/bot.py)
     # automation
     "auto_retry": "2",  # automatic retries after network / upload / page errors
     "auto_retry_minutes": "10, 30",  # delay before each retry
@@ -39,7 +40,7 @@ DEFAULTS = {
 }
 
 SECRET_KEYS = {"openai_api_key", "anthropic_api_key", "notify_bot_token"}
-BOOL_KEYS = {"headless", "dry_run", "notify_success", "assistant_auto_analyze"}
+BOOL_KEYS = {"headless", "dry_run", "notify_success", "assistant_auto_analyze", "bot_control"}
 
 
 def get(key: str) -> str:

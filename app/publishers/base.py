@@ -65,6 +65,7 @@ class BrowserPublisher:
     challenge_markers: tuple[str, ...] = ("/challenge", "checkpoint", "two_factor", "two_step")
     captcha_selector = "iframe[src*='captcha' i], iframe[title*='captcha' i], #captcha-verify-image"
     step_timeout = 60_000  # ms
+    thumbnail: Path | None = None  # cover image of the post, set by the worker
 
     def __init__(self, account, log: LogFn):
         self.account = account

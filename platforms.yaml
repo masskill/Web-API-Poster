@@ -40,6 +40,7 @@ telegram:
   video:
     max_duration_sec: 86400
     max_size_mb: 50           # Bot API upload limit (2000 MB only with a local Bot API server)
+    shrink: true              # a bigger video is re-encoded to fit (see publishers/telegram.py)
     formats: [mp4, mov, mkv, webm]
     aspect_ratios: ["16:9", "9:16", "1:1", "4:5"]
 

@@ -5,17 +5,21 @@ import binascii
 import logging
 import os
 import secrets
+import threading
+import webbrowser
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from app import automation, browser, config, db, videogen, web
+from app import automation, bot, browser, config, db, mixer, videogen, web
 from app.scheduler import Scheduler
 from app.worker import Worker, interrupt_stale_jobs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx logs every request URL at INFO, and Telegram URLs contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 if os.getenv("LOG_FILE"):  # set by run.ps1 -LogFile (autostart runs without a visible console)
     _file = logging.FileHandler(os.environ["LOG_FILE"], encoding="utf-8")
     _file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
@@ -27,6 +31,8 @@ if os.getenv("LOG_FILE"):  # set by run.ps1 -LogFile (autostart runs without a v
 async def lifespan(app: FastAPI):
     db.init_db()
     interrupt_stale_jobs()
+    mixer.requeue_interrupted()
+    mixer.worker.start()
     browser.runner.start()
     worker = Worker()
     browser.runner.submit(worker.run_forever())
@@ -37,9 +43,13 @@ async def lifespan(app: FastAPI):
         cleanup=automation.cleanup,
         inbox=lambda: automation.scan_inbox(on_created=scheduler.schedule),
         video_poll=lambda: asyncio.run(videogen.poll()),
+        update_check=automation.check_update_quietly,
+        bot_poll=lambda: asyncio.run(bot.poll(on_created=scheduler.schedule)),
     )
     app.state.start_automation()
     app.state.worker, app.state.scheduler = worker, scheduler
+    if os.getenv("OPEN_BROWSER") == "1":  # set by start.bat; the server is listening a moment after startup
+        threading.Timer(2, webbrowser.open, ["http://127.0.0.1:8000"]).start()
     yield
     scheduler.shutdown()
     browser.runner.stop()

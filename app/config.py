@@ -14,6 +14,7 @@ PROFILES_DIR = DATA_DIR / "profiles"
 SESSIONS_DIR = DATA_DIR / "sessions"
 DEBUG_DIR = DATA_DIR / "debug"
 GENERATIONS_DIR = DATA_DIR / "generations"
+MIXES_DIR = DATA_DIR / "mixes"
 COMFY_WORKFLOW = DATA_DIR / "comfy" / "workflow.json"
 DB_PATH = DATA_DIR / "app.db"
 PLATFORMS_FILE = BASE_DIR / "platforms.yaml"
@@ -22,14 +23,17 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 DOCS_DIR = BASE_DIR / "docs"
 
 # Keep in sync with the top entry of docs/CHANGELOG.md (a test checks it).
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
+# New versions are looked up in docs/CHANGELOG.md of this repository branch.
+REPO_URL = "https://github.com/masskill/Web-API-Poster"
+UPDATE_BRANCH = os.getenv("UPDATE_BRANCH", "main")
 
 # Set a password before running on a server reachable by others (HTTP Basic auth, any user name).
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, MEDIA_DIR, PROFILES_DIR, SESSIONS_DIR, DEBUG_DIR, GENERATIONS_DIR):
+    for d in (DATA_DIR, MEDIA_DIR, PROFILES_DIR, SESSIONS_DIR, DEBUG_DIR, GENERATIONS_DIR, MIXES_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

@@ -7,6 +7,7 @@ import sys
 import threading
 from concurrent.futures import Future
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from app import config, settings_store
 from app.db import get_session
@@ -60,6 +61,24 @@ def session_file(account: Account) -> Path:
     return config.SESSIONS_DIR / account.platform / f"{account.slug}.json"
 
 
+def proxy_settings(url: str) -> dict | None:
+    """'http://user:pass@1.2.3.4:8080' -> Playwright proxy option (None = direct connection)."""
+    url = (url or "").strip()
+    if not url:
+        return None
+    p = urlsplit(url if "://" in url else f"http://{url}")
+    proxy = {"server": f"{p.scheme}://{p.hostname}" + (f":{p.port}" if p.port else "")}
+    if p.username:
+        proxy.update(username=unquote(p.username), password=unquote(p.password or ""))
+    return proxy
+
+
+def proxy_label(url: str) -> str:
+    """The proxy address without the login and password, safe to show and log."""
+    proxy = proxy_settings(url)
+    return proxy["server"] if proxy else ""
+
+
 async def open_context(pw, account: Account, headless: bool, log=None):
     """Launch Edge (or fallback Chromium) with the account's own profile.
 
@@ -77,6 +96,11 @@ async def open_context(pw, account: Account, headless: bool, log=None):
         "ignore_default_args": ["--enable-automation"],
         "args": ["--disable-blink-features=AutomationControlled"],
     }
+    proxy = proxy_settings(account.cfg.get("proxy", ""))
+    if proxy:  # a separate IP address per account
+        opts["proxy"] = proxy
+        if log:
+            log(f"proxy: {proxy['server']}")
     channel = settings_store.get("browser_channel").strip()
     try:
         ctx = await pw.chromium.launch_persistent_context(str(profile), channel=channel or None, **opts)

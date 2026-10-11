@@ -128,12 +128,14 @@ def delete_post(post_id: int) -> bool:
         for job in jobs:
             shutil.rmtree(config.DEBUG_DIR / str(job.id), ignore_errors=True)
             s.delete(job)
-        video = Path(post.video_path)
+        video, thumbnail = Path(post.video_path), post.thumbnail_path
         s.delete(post)
         s.commit()
         still_used = s.exec(select(Post).where(Post.video_path == str(video))).first()
     if not still_used and video.parent == config.MEDIA_DIR:
         video.unlink(missing_ok=True)
+    if thumbnail and Path(thumbnail).parent == config.MEDIA_DIR:  # every post gets its own cover file
+        Path(thumbnail).unlink(missing_ok=True)
     return True
 
 
@@ -305,6 +307,7 @@ class Worker:
         debug_dir = None
         try:
             publisher = publishers[account.platform](account, log)
+            publisher.thumbnail = Path(post.thumbnail_path) if post.thumbnail_path else None  # used by YouTube
             if not video.exists():
                 raise FileNotFoundError(f"video not found: {video}")
             if publisher.uses_browser:

@@ -83,6 +83,8 @@
         </select>
       </div>
     </div>
+    <label class="checks"><input type="checkbox" name="bot_control" value="1" {{ "checked" if s.bot_control == "1" }}> {{ t("set.bot_control") }}</label>
+    <p class="muted small">{{ t("set.bot_hint") }}</p>
     <button type="button" class="secondary" hx-post="/settings/notify-test" hx-target="#notify-result">{{ t("set.notify_test") }}</button>
     <span id="notify-result" class="small"></span>
   </section>
@@ -147,6 +149,20 @@
     <button type="submit" style="flex:0">{{ t("set.workflow_upload") }}</button>
   </form>
   <p class="muted small">{{ t("set.workflow_hint") }}</p>
+</section>
+
+<section style="margin-top:14px">
+  <h2>{{ t("set.backup") }}</h2>
+  <a class="btn secondary" href="/settings/backup">{{ t("set.backup_download") }}</a>
+  <p class="muted small">{{ t("set.backup_hint") }}</p>
+</section>
+
+<section style="margin-top:14px">
+  <h2>{{ t("upd.title") }}</h2>
+  <p class="small">{{ t("upd.current", version=app_version) }}</p>
+  <button type="button" class="secondary" hx-post="/settings/update-check" hx-target="#update-result">{{ t("upd.check") }}</button>
+  <span id="update-result" class="small"></span>
+  <p class="muted small">{{ t("upd.hint") }}</p>
 </section>
 
 <section style="margin-top:14px">

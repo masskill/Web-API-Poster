@@ -1,11 +1,14 @@
-"""Unattended work: content inbox, daily login checks, pre-publication checks, cleanup of old files."""
+"""Unattended work: content inbox, daily login checks, pre-publication checks, cleanup of old files,
+looking for a new version of the poster."""
 import asyncio
 import logging
+import re
 import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from sqlmodel import select
 
 from app import config, posting, settings_store, worker
@@ -69,9 +72,10 @@ def cleanup(now: float | None = None) -> dict[str, int]:
                 shutil.rmtree(d, ignore_errors=True)
                 removed["debug"] += 1
     with get_session() as s:
-        used = {p.video_path for p in s.exec(select(Post)).all()}
-        active = {s.get(Post, j.post_id).video_path
-                  for j in s.exec(select(Job).where(Job.status.in_(ACTIVE))).all() if s.get(Post, j.post_id)}
+        posts = s.exec(select(Post)).all()
+        used = {p.video_path for p in posts} | {p.thumbnail_path for p in posts}
+        active_posts = [s.get(Post, j.post_id) for j in s.exec(select(Job).where(Job.status.in_(ACTIVE))).all()]
+        active = {path for p in active_posts if p for path in (p.video_path, p.thumbnail_path)}
     if config.MEDIA_DIR.exists():
         for f in config.MEDIA_DIR.iterdir():
             if not f.is_file() or str(f) in active:
@@ -83,6 +87,47 @@ def cleanup(now: float | None = None) -> dict[str, int]:
     if any(removed.values()):
         logger.info("cleanup: %s", removed)
     return removed
+
+
+# ---- new version: the top "## X.Y.Z" heading of docs/CHANGELOG.md on GitHub ----
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", version))
+
+
+def is_newer(version: str, current: str = config.APP_VERSION) -> bool:
+    return bool(version) and version_tuple(version) > version_tuple(current)
+
+
+def changelog_version(text: str) -> str | None:
+    match = re.search(r"^##\s+(\d+(?:\.\d+)+)", text, re.M)
+    return match.group(1) if match else None
+
+
+def download_url() -> str:
+    return f"{config.REPO_URL}/archive/refs/heads/{config.UPDATE_BRANCH}.zip"
+
+
+async def check_update(transport: httpx.AsyncBaseTransport | None = None) -> str:
+    """Returns the newest published version and remembers it for the "new version" badge. Raises on network errors."""
+    url = (config.REPO_URL.replace("://github.com/", "://raw.githubusercontent.com/")
+           + f"/{config.UPDATE_BRANCH}/docs/CHANGELOG.md")
+    async with httpx.AsyncClient(timeout=15, transport=transport, follow_redirects=True) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+    version = changelog_version(r.text)
+    if not version:
+        raise ValueError("no version in the changelog")
+    settings_store.set_value("latest_version", version)
+    return version
+
+
+def check_update_quietly() -> None:
+    """Scheduled every 12 hours; a failed check (no internet) is not worth a warning."""
+    try:
+        asyncio.run(check_update())
+    except Exception as e:
+        logger.info("update check skipped: %s", e)
 
 
 # ---- content inbox: data/inbox/<group slug>/video.mp4 (+ video.txt) -> publication ----

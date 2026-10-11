@@ -38,14 +38,14 @@ def with_signature(text: PlatformText, account: Account, rules: dict) -> Platfor
 
 def create_post(video_path: Path, template: PlatformText, accounts: list[Account], run_at: datetime | None,
                 dry_run: bool, category: str = "", texts: dict[str, PlatformText] | None = None,
-                group_id: int | None = None) -> Post:
+                group_id: int | None = None, thumbnail: str = "") -> Post:
     """Create a Post and one Job per account. texts: per-platform texts (else cut from the template)."""
     platforms = load_platforms()
     texts = texts or {}
     with get_session() as s:
         post = Post(video_path=str(video_path), title=template.title, description=template.description,
                     hashtags=" ".join(template.hashtags), category=category, scheduled_at=run_at,
-                    dry_run=dry_run, group_id=group_id)
+                    dry_run=dry_run, group_id=group_id, thumbnail_path=thumbnail)
         s.add(post)
         s.commit()
         for acc in accounts:
