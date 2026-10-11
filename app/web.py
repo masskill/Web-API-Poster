@@ -10,12 +10,13 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from sqlmodel import select
 
-from app import automation, browser, config, posting, settings_store, worker
+from app import assistant, automation, browser, config, posting, settings_store, videogen, worker
 from app.db import get_session
 from app.i18n import DEFAULT_LANG, LANGS, translate
-from app.models import Account, AccountGroup, Category, Job, Post, utcnow
+from app.models import Account, AccountGroup, Category, Generation, Job, Post, utcnow
 from app.notify import message, notify
 from app.posting import local_tz
 from app.platforms import load_platforms, platform_name
@@ -135,13 +136,28 @@ def set_theme(mode: str, request: Request):
 
 # ---- new post ----
 
+def probe_card(name: str) -> dict:
+    """Context for partials/video_uploaded.html."""
+    info, warning = None, None
+    try:
+        info = probe(media_path(name))
+    except FileNotFoundError:
+        warning = {"code": "ffprobe_missing"}
+    except Exception as e:
+        warning = {"code": "probe_failed", "error": str(e)[:200]}
+    return {"name": name, "info": info, "warning": warning}
+
+
 @router.get("/", response_class=HTMLResponse)
 def new_post_page(request: Request):
     with get_session() as s:
         categories = s.exec(select(Category).order_by(Category.id)).all()
+    video = request.query_params.get("video", "")  # a generated video sent from the "Відео" page
+    prefill = probe_card(video) if video and media_path(video).exists() else None
     return render(request, "new_post.html", accounts=all_accounts(), categories=categories, groups=all_groups(),
                   need_login=accounts_needing_login(), dry_run=settings_store.get_bool("dry_run"),
-                  timezone=settings_store.get("timezone"), error=request.query_params.get("error"))
+                  timezone=settings_store.get("timezone"), error=request.query_params.get("error"),
+                  prefill=prefill)
 
 
 @router.post("/upload", response_class=HTMLResponse)
@@ -150,14 +166,7 @@ def upload_video(request: Request, video: UploadFile):
     name = posting.media_name(video.filename or "video.mp4")
     with open(media_path(name), "wb") as f:
         shutil.copyfileobj(video.file, f)
-    info, warning = None, None
-    try:
-        info = probe(media_path(name))
-    except FileNotFoundError:
-        warning = {"code": "ffprobe_missing"}
-    except Exception as e:
-        warning = {"code": "probe_failed", "error": str(e)[:200]}
-    resp = render(request, "partials/video_uploaded.html", name=name, info=info, warning=warning)
+    resp = render(request, "partials/video_uploaded.html", **probe_card(name))
     resp.headers["HX-Trigger"] = "videoUploaded"
     return resp
 
@@ -518,9 +527,12 @@ async def check(account_id: int, request: Request):
 def settings_page(request: Request):
     with get_session() as s:
         categories = s.exec(select(Category).order_by(Category.id)).all()
+    workflow = videogen.load_workflow()
+    workflow_info = {"nodes": len(workflow), "has_prompt": "{{PROMPT}}" in json.dumps(workflow),
+                     "needs_image": videogen.workflow_needs_image(workflow)} if workflow else None
     return render(request, "settings.html", s=settings_store.all_settings(), categories=categories,
                   mask=config.mask_secret, saved=request.query_params.get("saved"),
-                  error=request.query_params.get("error"))
+                  error=request.query_params.get("error"), workflow_info=workflow_info)
 
 
 @router.post("/settings")
@@ -572,3 +584,169 @@ def delete_category(category_id: int):
             s.delete(cat)
             s.commit()
     return RedirectResponse("/settings", status_code=303)
+
+
+# ---- video generator (local model in ComfyUI) ----
+
+GEN_ERRORS = {"no_workflow", "needs_image", "no_prompt_field", "comfy_offline"}
+
+
+def generations() -> list[Generation]:
+    with get_session() as s:
+        return list(s.exec(select(Generation).order_by(Generation.id.desc()).limit(30)).all())
+
+
+def videos_ctx() -> dict:
+    gens = generations()
+    return {"generations": gens, "gen_errors": GEN_ERRORS,
+            "gen_active": any(g.status in ("queued", "running") for g in gens)}
+
+
+@router.get("/videos", response_class=HTMLResponse)
+def videos_page(request: Request):
+    return render(request, "videos.html", workflow=videogen.load_workflow(), comfy_url=settings_store.get("comfy_url"),
+                  error=request.query_params.get("error"), **videos_ctx())
+
+
+@router.get("/videos/list", response_class=HTMLResponse)
+def videos_list(request: Request):
+    return render(request, "partials/generations.html", **videos_ctx())
+
+
+@router.post("/videos")
+async def start_video(request: Request):
+    form = await request.form()
+    prompt = str(form.get("prompt", "")).strip()
+    if not prompt:
+        return RedirectResponse("/videos?error=gen.err_prompt", status_code=303)
+    image_path = None
+    image = form.get("image")
+    if getattr(image, "filename", ""):
+        config.GENERATIONS_DIR.mkdir(parents=True, exist_ok=True)
+        image_path = config.GENERATIONS_DIR / f"frame_{posting.media_name(image.filename)}"
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(image.file, f)
+    videogen.create_generation(prompt, str(form.get("negative", "")), str(image_path) if image_path else None)
+    return RedirectResponse("/videos", status_code=303)
+
+
+@router.post("/generations/{gen_id}/retry", response_class=HTMLResponse)
+def retry_generation(gen_id: int, request: Request):
+    videogen.retry_generation(gen_id)
+    return videos_list(request)
+
+
+@router.post("/generations/{gen_id}/cancel", response_class=HTMLResponse)
+async def cancel_generation(gen_id: int, request: Request):
+    await videogen.cancel_generation(gen_id)
+    return videos_list(request)
+
+
+@router.post("/generations/{gen_id}/delete", response_class=HTMLResponse)
+def delete_generation(gen_id: int, request: Request):
+    videogen.delete_generation(gen_id)
+    return videos_list(request)
+
+
+@router.get("/generations/{gen_id}/video")
+def generation_video(gen_id: int):
+    gen = videogen.get_generation(gen_id)
+    if not gen or not gen.video_path or Path(gen.video_path).parent != config.GENERATIONS_DIR \
+            or not Path(gen.video_path).exists():
+        return HTMLResponse("not found", status_code=404)
+    return FileResponse(gen.video_path)
+
+
+@router.post("/generations/{gen_id}/post")
+def generation_to_post(gen_id: int):
+    """Copy the generated video to data/media and open "Нова публікація" with it."""
+    gen = videogen.get_generation(gen_id)
+    if not gen or not gen.video_path or not Path(gen.video_path).exists():
+        return HTMLResponse("", headers={"HX-Redirect": "/videos"})
+    name = posting.media_name(Path(gen.video_path).name)
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy(gen.video_path, media_path(name))
+    return HTMLResponse("", headers={"HX-Redirect": f"/?video={name}"})
+
+
+@router.post("/settings/workflow")
+async def upload_workflow(request: Request):
+    form = await request.form()
+    file = form.get("workflow")
+    try:
+        workflow = videogen.parse_workflow((await file.read()).decode("utf-8-sig"))
+    except Exception:
+        return RedirectResponse("/settings?error=set.err_workflow", status_code=303)
+    config.COMFY_WORKFLOW.parent.mkdir(parents=True, exist_ok=True)
+    config.COMFY_WORKFLOW.write_text(json.dumps(workflow, ensure_ascii=False, indent=1), encoding="utf-8")
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@router.post("/settings/comfy-test", response_class=HTMLResponse)
+async def comfy_test(request: Request):
+    lang = get_lang(request)
+    try:
+        stats = await videogen.client().system_stats()
+    except Exception as e:
+        return HTMLResponse(f'<span class="error">{html.escape(translate(lang, "set.comfy_fail", error=str(e)[:200]))}</span>')
+    devices = ", ".join(d.get("name", "") for d in stats.get("devices", [])) or "?"
+    return HTMLResponse(f'<span class="ok">{html.escape(translate(lang, "set.comfy_ok", devices=devices))}</span>')
+
+
+# ---- assistant ----
+
+def chat_format(text: str) -> Markup:
+    """Escape the text; ``` blocks become copyable <pre>, **bold** becomes <b>."""
+    parts = str(text or "").split("```")
+    out = []
+    for i, part in enumerate(parts):
+        if i % 2:  # inside a code block: drop the language line
+            body = part.split("\n", 1)[1] if "\n" in part and part.split("\n", 1)[0].strip().isalpha() else part
+            out.append(f'<pre class="prompt">{escape(body.strip())}</pre>')
+        else:
+            chunks = str(escape(part)).split("**")
+            out.append("".join(f"<b>{c}</b>" if j % 2 else c for j, c in enumerate(chunks)))
+    return Markup("".join(out))
+
+
+templates.env.filters["chat_format"] = chat_format
+
+
+def chat_ctx() -> dict:
+    return {"messages": assistant.all_messages(), "actions": assistant.actions_by_id(),
+            "assistant_ready": assistant.configured()}
+
+
+@router.get("/assistant", response_class=HTMLResponse)
+def assistant_page(request: Request):
+    return render(request, "assistant.html", **chat_ctx())
+
+
+@router.get("/assistant/chat", response_class=HTMLResponse)
+def assistant_chat(request: Request):
+    return render(request, "partials/chat.html", **chat_ctx())
+
+
+@router.post("/assistant/send", response_class=HTMLResponse)
+async def assistant_send(request: Request):
+    text = str((await request.form()).get("text", "")).strip()
+    if text:
+        assistant.add_message("user", text)
+        await assistant.reply()
+    return assistant_chat(request)
+
+
+@router.post("/assistant/actions/{action_id}/{decision}", response_class=HTMLResponse)
+async def assistant_action(action_id: int, decision: str, request: Request):
+    run_at = assistant.resolve_action(action_id, confirm=decision == "confirm")
+    if run_at is not None:
+        request.app.state.scheduler.schedule(run_at)
+    if decision == "confirm" and assistant.configured():
+        await assistant.reply()  # short comment on what happened
+    return assistant_chat(request)
+
+
+@router.post("/assistant/clear", response_class=HTMLResponse)
+def assistant_clear(request: Request):
+    assistant.clear()
+    return assistant_chat(request)

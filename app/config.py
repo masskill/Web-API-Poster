@@ -13,6 +13,8 @@ MEDIA_DIR = DATA_DIR / "media"
 PROFILES_DIR = DATA_DIR / "profiles"
 SESSIONS_DIR = DATA_DIR / "sessions"
 DEBUG_DIR = DATA_DIR / "debug"
+GENERATIONS_DIR = DATA_DIR / "generations"
+COMFY_WORKFLOW = DATA_DIR / "comfy" / "workflow.json"
 DB_PATH = DATA_DIR / "app.db"
 PLATFORMS_FILE = BASE_DIR / "platforms.yaml"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -23,7 +25,7 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, MEDIA_DIR, PROFILES_DIR, SESSIONS_DIR, DEBUG_DIR):
+    for d in (DATA_DIR, MEDIA_DIR, PROFILES_DIR, SESSIONS_DIR, DEBUG_DIR, GENERATIONS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

@@ -114,8 +114,40 @@
     <p class="muted small">{{ t("set.automation_hint") }}</p>
   </section>
 
+  <section id="comfy">
+    <h2>{{ t("set.comfy") }}</h2>
+    <label>{{ t("set.comfy_url") }}</label>
+    <input type="text" name="comfy_url" value="{{ s.comfy_url }}" placeholder="http://127.0.0.1:8188">
+    <button type="button" class="secondary" style="margin-top:8px" hx-post="/settings/comfy-test" hx-target="#comfy-result">{{ t("set.comfy_test") }}</button>
+    <span id="comfy-result" class="small"></span>
+  </section>
+
+  <section>
+    <h2>{{ t("set.assistant") }}</h2>
+    <label>{{ t("set.assistant_model") }}</label>
+    <input type="text" name="assistant_model" value="{{ s.assistant_model }}" placeholder="gpt-5.4-mini">
+    <label class="checks"><input type="checkbox" name="assistant_auto_analyze" value="1" {{ "checked" if s.assistant_auto_analyze == "1" }}> {{ t("set.assistant_auto") }}</label>
+    <p class="muted small">{{ t("set.assistant_hint") }}</p>
+  </section>
+
   <button type="submit">{{ t("common.save") }}</button>
 </form>
+
+<section style="margin-top:14px">
+  <h2>{{ t("set.workflow") }}</h2>
+  {% if workflow_info %}
+    <p class="ok small">{{ t("set.workflow_loaded", n=workflow_info.nodes) }}
+      {% if not workflow_info.has_prompt %}<span class="warn">{{ t("set.workflow_no_placeholder") }}</span>{% endif %}
+      {% if workflow_info.needs_image %}<span class="muted">{{ t("set.workflow_needs_image") }}</span>{% endif %}</p>
+  {% else %}
+    <p class="warn small">{{ t("set.workflow_none") }}</p>
+  {% endif %}
+  <form method="post" action="/settings/workflow" enctype="multipart/form-data" class="row">
+    <input type="file" name="workflow" accept=".json,application/json" required>
+    <button type="submit" style="flex:0">{{ t("set.workflow_upload") }}</button>
+  </form>
+  <p class="muted small">{{ t("set.workflow_hint") }}</p>
+</section>
 
 <section style="margin-top:14px">
   <h2>{{ t("set.categories") }}</h2>

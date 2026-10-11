@@ -14,7 +14,9 @@
 </section>
 
 <form id="post-form" method="post" action="/posts">
-  <div id="video-slot"></div>
+  <div id="video-slot">
+    {% if prefill %}{% with name=prefill.name, info=prefill.info, warning=prefill.warning %}{% include "partials/video_uploaded.html" %}{% endwith %}{% endif %}
+  </div>
 
   <section>
     <label>{{ t("post.f_title") }}</label>

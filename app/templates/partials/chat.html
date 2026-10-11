@@ -1,0 +1,35 @@
+<div id="chat" class="chat" hx-get="/assistant/chat" hx-trigger="every 15s" hx-swap="outerHTML">
+  {% if not messages %}<p class="muted">{{ t("chat.empty") }}</p>{% endif %}
+  {% for m in messages %}
+    {% if m.role == "user" %}
+      <div class="msg user">{{ m.content }}</div>
+    {% elif m.role == "assistant" and m.content %}
+      <div class="msg bot">{{ m.content|chat_format }}</div>
+    {% elif m.role == "event" %}
+      <div class="msg event">{{ t("chat.ev." ~ m.content) if m.content in ("no_key", "too_many_steps") else m.content }}</div>
+    {% elif m.role == "tool" and m.action_id and actions.get(m.action_id) %}
+      {% set a = actions[m.action_id] %}{% set d = a.data %}
+      <div class="msg action">
+        <b>{{ t("chat.action." ~ a.kind) }}</b>
+        {% if a.kind == "start_generation" %}
+          <pre class="prompt">{{ d.get("prompt", "") }}</pre>
+          {% if d.get("negative_prompt") %}<div class="small muted">{{ t("gen.negative") }}: {{ d.negative_prompt }}</div>{% endif %}
+        {% else %}
+          <div class="small">#{{ d.get("generation_id") }} · <b>{{ d.get("title", "") }}</b></div>
+          {% if d.get("description") %}<div class="small">{{ d.description }}</div>{% endif %}
+          {% if d.get("hashtags") %}<div class="small muted">{% for h in d.hashtags %}#{{ h|replace("#", "") }} {% endfor %}</div>{% endif %}
+          <div class="small muted">{{ t("chat.post_target", target=(t("chat.group") ~ " #" ~ d.group_id) if d.get("group_id") else (t("nav.accounts") ~ ": " ~ (d.get("account_ids") or [])|join(", "))) }}
+            · {{ t("post.slot") if d.get("when") == "slot" else t("post.now") }} · {{ "dry-run" if d.get("dry_run", True) else t("chat.for_real") }}</div>
+        {% endif %}
+        <div class="actions" style="margin-top:8px">
+          {% if a.status == "pending" %}
+            <button hx-post="/assistant/actions/{{ a.id }}/confirm" hx-target="#chat" hx-swap="outerHTML" hx-indicator="#chat-ind">{{ t("chat.confirm") }}</button>
+            <button class="secondary" hx-post="/assistant/actions/{{ a.id }}/cancel" hx-target="#chat" hx-swap="outerHTML">{{ t("posts.cancel") }}</button>
+          {% else %}
+            <span class="badge {{ {'done': 'published', 'failed': 'failed', 'cancelled': ''}[a.status] }}">{{ t("chat.astatus." ~ a.status) }}</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>

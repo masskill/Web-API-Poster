@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("gen.title") }}</h1>
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+{% if not workflow %}
+  <div class="alert warn">{{ t("gen.no_workflow_hint") }} <a href="/settings#comfy">{{ t("nav.settings") }}</a></div>
+{% endif %}
+<section>
+  <form method="post" action="/videos" enctype="multipart/form-data">
+    <label>{{ t("gen.prompt") }}</label>
+    <textarea name="prompt" rows="4" required placeholder="Cinematic summer sunset on a tropical beach, gentle waves, warm golden light, slow camera push-in, seamless loop"></textarea>
+    <label>{{ t("gen.negative") }}</label>
+    <input type="text" name="negative" placeholder="blurry, distorted, flicker, text, watermark">
+    <label>{{ t("gen.image") }} <span class="muted small">({{ t("gen.image_hint") }})</span></label>
+    <input type="file" name="image" accept="image/*">
+    <div class="actions" style="margin-top:12px">
+      <button type="submit">{{ t("gen.start") }}</button>
+      <a class="btn secondary" href="/assistant">{{ t("gen.ask_assistant") }}</a>
+    </div>
+    <p class="muted small">{{ t("gen.comfy_note", url=comfy_url) }}</p>
+  </form>
+</section>
+{% include "partials/generations.html" %}
+{% endblock %}

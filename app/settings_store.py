@@ -31,10 +31,15 @@ DEFAULTS = {
     "login_check_time": "09:00",  # daily login check of all accounts (local time, empty = off)
     "keep_days": "30",  # debug files and finished videos are deleted after N days (0 = never)
     "inbox_dir": os.getenv("INBOX_DIR", ""),  # folder for the content inbox (empty = data/inbox)
+    # video generator: local ComfyUI (e.g. MiniMax H3 installed with Pinokio)
+    "comfy_url": os.getenv("COMFY_URL", "http://127.0.0.1:8188"),
+    # assistant (uses openai_api_key)
+    "assistant_model": os.getenv("ASSISTANT_MODEL", "gpt-5.4-mini"),
+    "assistant_auto_analyze": "1",  # explain failed generations automatically
 }
 
 SECRET_KEYS = {"openai_api_key", "anthropic_api_key", "notify_bot_token"}
-BOOL_KEYS = {"headless", "dry_run", "notify_success"}
+BOOL_KEYS = {"headless", "dry_run", "notify_success", "assistant_auto_analyze"}
 
 
 def get(key: str) -> str:

@@ -1,4 +1,5 @@
 """Application entry point: uvicorn app.main:app"""
+import asyncio
 import base64
 import binascii
 import logging
@@ -10,7 +11,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
-from app import automation, browser, config, db, web
+from app import automation, browser, config, db, videogen, web
 from app.scheduler import Scheduler
 from app.worker import Worker, interrupt_stale_jobs
 
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI):
         login_check=lambda: browser.runner.submit(automation.check_all_logins()),
         cleanup=automation.cleanup,
         inbox=lambda: automation.scan_inbox(on_created=scheduler.schedule),
+        video_poll=lambda: asyncio.run(videogen.poll()),
     )
     app.state.start_automation()
     app.state.worker, app.state.scheduler = worker, scheduler

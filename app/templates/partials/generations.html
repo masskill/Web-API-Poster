@@ -1,0 +1,36 @@
+<div id="gen-list" {% if gen_active %}hx-get="/videos/list" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+{% if not generations %}<p class="muted">{{ t("gen.empty") }}</p>{% endif %}
+<div class="gen-grid">
+{% for g in generations %}
+  {% set waiting = g.status == "running" and g.queue_position %}
+  <section class="gen-card">
+    <div class="actions" style="justify-content:space-between">
+      <b>#{{ g.id }}</b>
+      <span class="badge {{ {'queued': 'pending', 'running': 'running', 'done': 'published', 'failed': 'failed', 'cancelled': ''}[g.status] }}">
+        {{ t("gen.waiting", n=g.queue_position) if waiting else t("gen.status." ~ g.status) }}</span>
+    </div>
+    {% if g.status == "done" and g.video_path %}
+      <video src="/generations/{{ g.id }}/video" controls loop muted preload="metadata"></video>
+    {% endif %}
+    <p class="small" title="{{ g.prompt }}">{{ g.prompt|truncate(220) }}</p>
+    {% if g.error %}
+      <p class="small {{ 'warn' if g.status in ('queued', 'running') else 'error' }}">
+        {{ t("gen.err." ~ g.error) if g.error in gen_errors else g.error }}</p>
+    {% endif %}
+    <div class="small muted">{{ fmt_dt(g.created_at) }}</div>
+    <div class="actions" style="margin-top:8px">
+      {% if g.status == "done" %}<button hx-post="/generations/{{ g.id }}/post">{{ t("gen.to_post") }}</button>{% endif %}
+      {% if g.status in ("failed", "cancelled", "done") %}
+        <button class="secondary" hx-post="/generations/{{ g.id }}/retry" hx-target="#gen-list" hx-swap="outerHTML">
+          {{ t("gen.again") if g.status == "done" else t("posts.retry") }}</button>
+        <button class="danger" hx-post="/generations/{{ g.id }}/delete" hx-target="#gen-list" hx-swap="outerHTML"
+                hx-confirm="{{ t('gen.delete_confirm') }}">{{ t("common.delete") }}</button>
+      {% endif %}
+      {% if g.status in ("queued", "running") %}
+        <button class="danger" hx-post="/generations/{{ g.id }}/cancel" hx-target="#gen-list" hx-swap="outerHTML">{{ t("posts.cancel") }}</button>
+      {% endif %}
+    </div>
+  </section>
+{% endfor %}
+</div>
+</div>

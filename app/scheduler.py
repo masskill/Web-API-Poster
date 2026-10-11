@@ -55,7 +55,7 @@ class Scheduler:
             self.wake()
         return len(future)
 
-    def start_automation(self, login_check, cleanup, inbox=None) -> None:
+    def start_automation(self, login_check, cleanup, inbox=None, video_poll=None) -> None:
         """(Re)register the recurring automation tasks; called at startup and after settings change."""
         tz = local_tz()
         check_time = settings_store.get("login_check_time").strip()
@@ -69,4 +69,7 @@ class Scheduler:
         self.aps.add_job(cleanup, CronTrigger(hour=3, minute=30, timezone=tz), id="cleanup", replace_existing=True)
         if inbox:
             self.aps.add_job(inbox, "interval", seconds=60, id="inbox", replace_existing=True,
+                             max_instances=1, coalesce=True)
+        if video_poll:
+            self.aps.add_job(video_poll, "interval", seconds=10, id="video-poll", replace_existing=True,
                              max_instances=1, coalesce=True)

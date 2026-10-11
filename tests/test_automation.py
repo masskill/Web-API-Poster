@@ -42,7 +42,7 @@ def test_notify_not_configured():
 def test_all_notification_messages_are_translated():
     keys = set()
     for f in Path(config.BASE_DIR, "app").rglob("*.py"):
-        keys |= set(re.findall(r'message\(\s*"(notify\.\w+)"', f.read_text(encoding="utf-8")))
+        keys |= set(re.findall(r'message\(\s*"((?:notify|event)\.\w+)"', f.read_text(encoding="utf-8")))
     assert keys and keys <= set(TEXTS)
     assert "{who}" in message("notify.published", who="{who}", url="")
 
