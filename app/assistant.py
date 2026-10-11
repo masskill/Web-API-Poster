@@ -4,6 +4,7 @@ Read-only tools run at once. Actions (start a generation, create a publication) 
 the chat shows a card and nothing happens until the user presses "Confirm".
 """
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from app.notify import message
 from app.platforms import platform_name
 from app.texts import PlatformText, parse_hashtags
 
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+# Any OpenAI-compatible endpoint works (e.g. OpenRouter); default is OpenAI itself.
+OPENAI_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
 HISTORY = 20  # messages sent to the model: keeps every request cheap
 MAX_STEPS = 5
 
