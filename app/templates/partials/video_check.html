@@ -1,0 +1,8 @@
+{% if not ready %}
+  <p class="muted">{{ t("post.select_first") }}</p>
+{% elif not warnings %}
+  <p class="ok">{{ t("post.no_warnings") }}</p>
+{% else %}
+  <ul class="warn">{% for w in warnings %}<li>{{ t("warn." ~ w.code, **w) }}</li>{% endfor %}</ul>
+  <p class="muted small">{{ t("warn.note") }}</p>
+{% endif %}

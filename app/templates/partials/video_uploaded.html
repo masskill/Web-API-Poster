@@ -1,0 +1,5 @@
+<input type="hidden" name="video_name" value="{{ name }}">
+<div class="alert ok">{{ t("post.video_ok") }} <code>{{ name }}</code>
+  {% if info %}, {{ t("post.video_info", w=info.width, h=info.height, dur=info.duration|round(1), size=info.size_mb, ext=info.ext) }}{% endif %}
+  {% if warning %}<div class="warn">{{ t("warn." ~ warning.code, **warning) }}</div>{% endif %}
+</div>

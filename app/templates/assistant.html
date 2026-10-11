@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("chat.title") }}</h1>
+{% if not assistant_ready %}
+  <div class="alert warn">{{ t("chat.no_key") }} <a href="/settings">{{ t("nav.settings") }}</a></div>
+{% endif %}
+{% include "partials/chat.html" %}
+<section>
+  <form id="chat-form" hx-post="/assistant/send" hx-target="#chat" hx-swap="outerHTML" hx-indicator="#chat-ind"
+        hx-disabled-elt="find button" hx-on::after-request="if (event.detail.successful) this.reset()">
+    <textarea name="text" rows="3" required placeholder="{{ t('chat.placeholder') }}"></textarea>
+    <div class="actions" style="margin-top:8px">
+      <button type="submit">{{ t("chat.send") }}</button>
+      <span id="chat-ind" class="htmx-indicator muted">{{ t("chat.thinking") }}</span>
+    </div>
+  </form>
+  <div class="actions" style="margin-top:10px">
+    {% for key in ("idea", "prompt", "status", "post") %}
+      <button class="secondary" hx-post="/assistant/send" hx-vals='{"text": {{ t("chat.quick." ~ key ~ "_text")|tojson }}}'
+              hx-target="#chat" hx-swap="outerHTML" hx-indicator="#chat-ind">{{ t("chat.quick." ~ key) }}</button>
+    {% endfor %}
+    <button class="danger" hx-post="/assistant/clear" hx-target="#chat" hx-swap="outerHTML"
+            hx-confirm="{{ t('chat.clear_confirm') }}">{{ t("chat.clear") }}</button>
+  </div>
+  <p class="muted small">{{ t("chat.hint") }}</p>
+</section>
+<script>
+// Enter sends, Shift+Enter makes a new line.
+document.querySelector("#chat-form textarea").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); htmx.trigger("#chat-form", "submit"); }
+});
+</script>
+{% endblock %}

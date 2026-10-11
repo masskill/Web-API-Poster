@@ -1,0 +1,68 @@
+"""Paths and environment configuration."""
+import os
+import re
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
+DATA_DIR = Path(os.getenv("DATA_DIR") or BASE_DIR / "data")
+MEDIA_DIR = DATA_DIR / "media"
+PROFILES_DIR = DATA_DIR / "profiles"
+SESSIONS_DIR = DATA_DIR / "sessions"
+DEBUG_DIR = DATA_DIR / "debug"
+GENERATIONS_DIR = DATA_DIR / "generations"
+MIXES_DIR = DATA_DIR / "mixes"
+COMFY_WORKFLOW = DATA_DIR / "comfy" / "workflow.json"
+DB_PATH = DATA_DIR / "app.db"
+PLATFORMS_FILE = BASE_DIR / "platforms.yaml"
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+DOCS_DIR = BASE_DIR / "docs"
+
+# Keep in sync with the top entry of docs/CHANGELOG.md (a test checks it).
+APP_VERSION = "1.7.0"
+# New versions are looked up in docs/CHANGELOG.md of this repository branch.
+REPO_URL = "https://github.com/masskill/Web-API-Poster"
+UPDATE_BRANCH = os.getenv("UPDATE_BRANCH", "main")
+
+# Set a password before running on a server reachable by others (HTTP Basic auth, any user name).
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
+
+def ensure_dirs() -> None:
+    for d in (DATA_DIR, MEDIA_DIR, PROFILES_DIR, SESSIONS_DIR, DEBUG_DIR, GENERATIONS_DIR, MIXES_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def mask_secret(value: str | None) -> str:
+    """Show only the edges of a secret: 'abcd…wxyz'."""
+    if not value:
+        return ""
+    if len(value) <= 10:
+        return "•" * len(value)
+    return f"{value[:4]}…{value[-4:]}"
+
+
+def scrub(text: str, secrets: list[str | None]) -> str:
+    """Replace every known secret in text with its mask."""
+    for s in secrets:
+        if s:
+            text = text.replace(s, mask_secret(s))
+    return text
+
+
+# Profile folders get ASCII names: safer for browser profiles on any OS.
+TRANSLIT = dict(zip(
+    "абвгґдеєжзиіїйклмнопрстуфхцчшщьюяыэё",
+    ["a", "b", "v", "h", "g", "d", "e", "ie", "zh", "z", "y", "i", "i", "i", "k", "l", "m", "n", "o", "p",
+     "r", "s", "t", "u", "f", "kh", "ts", "ch", "sh", "shch", "", "iu", "ia", "y", "e", "e"],
+))
+
+
+def slugify(name: str) -> str:
+    text = "".join(TRANSLIT.get(c, c) for c in name.strip().lower())
+    slug = re.sub(r"[^a-z0-9_-]+", "-", text).strip("-_")
+    return slug or "account"

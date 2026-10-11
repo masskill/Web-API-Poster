@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t("mix.title") }}</h1>
+{% if error %}<div class="alert error">{{ t(error) }}</div>{% endif %}
+<p class="muted">{{ t("mix.intro") }}</p>
+<section>
+  <form method="post" action="/mix" enctype="multipart/form-data"
+        onsubmit="this.querySelector('button[type=submit]').disabled = true; document.getElementById('mix-uploading').style.display = 'inline';">
+    <label>{{ t("mix.name") }}</label>
+    <input type="text" name="title" placeholder="Deep House Mix 2026 #5">
+    <label>{{ t("mix.clip") }}</label>
+    <div class="row">
+      {% if clips %}
+      <select name="generation_id">
+        <option value="">{{ t("mix.clip_own") }}</option>
+        {% for g in clips %}
+          <option value="{{ g.id }}" {{ "selected" if selected == g.id|string or (not selected and loop.first) }}>#{{ g.id }} — {{ g.prompt|truncate(60) }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <input type="file" name="clip" accept="video/*,image/gif">
+    </div>
+    <p class="muted small">{{ t("mix.clip_hint") }}</p>
+    <label>{{ t("mix.tracks") }}</label>
+    <input type="file" name="tracks" accept="audio/*" multiple required>
+    <p class="muted small">{{ t("mix.tracks_hint") }}</p>
+    <label>{{ t("mix.crossfade") }}</label>
+    <input type="number" name="crossfade" min="0" max="30" step="0.5" value="3">
+    <div class="actions" style="margin-top:12px">
+      <button type="submit">{{ t("mix.start") }}</button>
+      <span id="mix-uploading" class="muted" style="display:none">{{ t("mix.uploading") }}</span>
+    </div>
+  </form>
+</section>
+{% include "partials/mixes.html" %}
+{% endblock %}

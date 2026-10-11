@@ -1,0 +1,34 @@
+<div id="mix-list" {% if mix_active %}hx-get="/mix/list" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+{% if not mixes %}<p class="muted">{{ t("mix.empty") }}</p>{% endif %}
+<div class="gen-grid">
+{% for m in mixes %}
+  <section class="gen-card">
+    <div class="actions" style="justify-content:space-between">
+      <b>{{ m.title or ("#" ~ m.id) }}</b>
+      <span class="badge {{ {'queued': 'pending', 'running': 'running', 'done': 'published', 'failed': 'failed', 'cancelled': ''}[m.status] }}">
+        {{ t("mix.status." ~ m.status) }}{% if m.status == "running" %} {{ m.progress }}%{% endif %}</span>
+    </div>
+    {% if m.status == "running" %}<progress value="{{ m.progress }}" max="100" style="width:100%"></progress>{% endif %}
+    {% if m.status == "done" and m.video_path %}
+      <video src="/mixes/{{ m.id }}/video" controls preload="metadata"></video>
+    {% endif %}
+    <p class="small muted">{{ t("mix.summary", n=m.track_list|length, total=mix_total(m)) }}</p>
+    <pre class="prompt">{{ m.tracklist }}</pre>
+    {% if m.error %}<p class="small error">{{ t("mix.err." ~ m.error) if m.error in mix_errors else m.error }}</p>{% endif %}
+    <div class="small muted">{{ fmt_dt(m.created_at) }}</div>
+    <div class="actions" style="margin-top:8px">
+      {% if m.status == "done" %}<button hx-post="/mixes/{{ m.id }}/post">{{ t("gen.to_post") }}</button>{% endif %}
+      {% if m.status in ("failed", "cancelled") %}
+        <button class="secondary" hx-post="/mixes/{{ m.id }}/retry" hx-target="#mix-list" hx-swap="outerHTML">{{ t("posts.retry") }}</button>
+      {% endif %}
+      {% if m.status in ("queued", "running") %}
+        <button class="danger" hx-post="/mixes/{{ m.id }}/cancel" hx-target="#mix-list" hx-swap="outerHTML">{{ t("posts.cancel") }}</button>
+      {% else %}
+        <button class="danger" hx-post="/mixes/{{ m.id }}/delete" hx-target="#mix-list" hx-swap="outerHTML"
+                hx-confirm="{{ t('mix.delete_confirm') }}">{{ t("common.delete") }}</button>
+      {% endif %}
+    </div>
+  </section>
+{% endfor %}
+</div>
+</div>
